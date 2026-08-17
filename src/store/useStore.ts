@@ -1,0 +1,269 @@
+/**
+ * El prototipo tenía todo el estado en un solo componente. Aquí se separa en
+ * store + persistencia: la base es la fuente de verdad y el store es un caché
+ * en memoria que se repuebla desde ella tras cada escritura.
+ *
+ * `open` y `enter` del prototipo son estado de UI y **no** viven aquí ni en la
+ * base: se quedan en el componente que los usa.
+ */
+
+import { create } from 'zustand';
+
+import * as db from '../lib/db/queries';
+import { cancelForEntry, reconcileAll } from '../lib/notifications';
+import type {
+  CustomUnit,
+  Entry,
+  EntryType,
+  Frequency,
+  NotificationRule,
+  Priority,
+  Tag,
+} from '../types';
+
+export interface Settings {
+  /** Detección de tipo al escribir. Desactivada, todo entra como nota. */
+  detect: boolean;
+  sound: boolean;
+  digest: boolean;
+  dnd: boolean;
+  theme: 'dark' | 'system';
+  /** Los tres pasos de bienvenida solo se ven una vez. */
+  onboarded: boolean;
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  detect: true,
+  sound: true,
+  digest: false,
+  dnd: false,
+  theme: 'dark',
+  onboarded: false,
+};
+
+/** Lo que el ReminderCreator devuelve al pulsar «Listo». */
+export interface ReminderConfig {
+  dueAt: Date;
+  frequency: Frequency;
+  weeklyDay: number | null;
+  customInterval: number | null;
+  customUnit: CustomUnit | null;
+  /** Independiente de `frequency` y combinable con cualquiera — §3.1. */
+  relativeOffsetMinutes: number | null;
+}
+
+interface Store {
+  ready: boolean;
+  entries: Entry[];
+  tags: Tag[];
+  counts: Record<string, number>;
+  rules: Record<string, NotificationRule[]>;
+  settings: Settings;
+  toast: string | null;
+
+  load: () => Promise<void>;
+  refresh: () => Promise<void>;
+
+  addEntry: (input: {
+    type: EntryType;
+    title: string;
+    tag_id?: string | null;
+  }) => Promise<Entry>;
+  patchEntry: (
+    id: string,
+    patch: Partial<Pick<Entry, 'type' | 'title' | 'body' | 'tag_id' | 'priority'>>
+  ) => Promise<void>;
+  removeEntry: (id: string) => Promise<void>;
+  toggleTask: (id: string) => Promise<void>;
+  toggleSubtask: (entryId: string, subtaskId: string) => Promise<void>;
+
+  saveReminder: (entryId: string, config: ReminderConfig) => Promise<void>;
+  clearReminder: (entryId: string) => Promise<void>;
+
+  updateTag: (id: string, patch: { name?: string; color?: string }) => Promise<void>;
+  removeTag: (id: string) => Promise<void>;
+  addTag: (name: string, color: string) => Promise<boolean>;
+
+  setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => Promise<void>;
+  showToast: (message: string) => void;
+  hideToast: () => void;
+}
+
+export const useStore = create<Store>((set, get) => ({
+  ready: false,
+  entries: [],
+  tags: [],
+  counts: {},
+  rules: {},
+  settings: DEFAULT_SETTINGS,
+  toast: null,
+
+  load: async () => {
+    const raw = await db.readSettings();
+    const settings: Settings = {
+      detect: raw.detect ? raw.detect === '1' : DEFAULT_SETTINGS.detect,
+      sound: raw.sound ? raw.sound === '1' : DEFAULT_SETTINGS.sound,
+      digest: raw.digest ? raw.digest === '1' : DEFAULT_SETTINGS.digest,
+      dnd: raw.dnd ? raw.dnd === '1' : DEFAULT_SETTINGS.dnd,
+      theme: raw.theme === 'system' ? 'system' : 'dark',
+      onboarded: raw.onboarded === '1',
+    };
+    set({ settings });
+    await get().refresh();
+    set({ ready: true });
+  },
+
+  refresh: async () => {
+    const [entries, tags, counts] = await Promise.all([
+      db.listEntries(),
+      db.listTags(),
+      db.tagCounts(),
+    ]);
+
+    const rules: Record<string, NotificationRule[]> = {};
+    for (const entry of entries) {
+      if (entry.due_at) rules[entry.id] = await db.listRules(entry.id);
+    }
+
+    set({ entries, tags, counts, rules });
+  },
+
+  addEntry: async ({ type, title, tag_id }) => {
+    const entry = await db.createEntry({ type, title, tag_id: tag_id ?? null });
+    set({ entries: [entry, ...get().entries] });
+    return entry;
+  },
+
+  patchEntry: async (id, patch) => {
+    await db.updateEntry(id, patch);
+    set({
+      entries: get().entries.map((e) =>
+        e.id === id ? { ...e, ...patch, updated_at: new Date().toISOString() } : e
+      ),
+    });
+  },
+
+  removeEntry: async (id) => {
+    // Cancelar antes de borrar: si se borra primero, las reglas caen por
+    // cascada y nos quedamos sin los identificadores que hay que cancelar.
+    await cancelForEntry(id);
+    await db.deleteEntry(id);
+    set({ entries: get().entries.filter((e) => e.id !== id) });
+    await get().refresh();
+  },
+
+  toggleTask: async (id) => {
+    const entry = get().entries.find((e) => e.id === id);
+    if (!entry) return;
+
+    const completed = !entry.completed;
+    await db.updateEntry(id, { completed });
+    set({
+      entries: get().entries.map((e) => (e.id === id ? { ...e, completed } : e)),
+    });
+
+    if (completed) {
+      // Al completar: desactivar y cancelar de inmediato, sin esperar a la
+      // reconciliación, para que no llegue el aviso de algo ya tachado.
+      await db.setRulesActive(id, false);
+      await cancelForEntry(id);
+    } else {
+      // Al desmarcar, reprogramar si la fecha sigue en el futuro.
+      await db.setRulesActive(id, true);
+      await reconcileAll();
+    }
+    await get().refresh();
+  },
+
+  toggleSubtask: async (entryId, subtaskId) => {
+    const entry = get().entries.find((e) => e.id === entryId);
+    const subtask = entry?.subtasks.find((s) => s.id === subtaskId);
+    if (!subtask) return;
+
+    const completed = !subtask.completed;
+    await db.setSubtaskCompleted(subtaskId, completed);
+    set({
+      entries: get().entries.map((e) =>
+        e.id !== entryId
+          ? e
+          : {
+              ...e,
+              subtasks: e.subtasks.map((s) =>
+                s.id === subtaskId ? { ...s, completed } : s
+              ),
+            }
+      ),
+    });
+  },
+
+  saveReminder: async (entryId, config) => {
+    await db.updateEntry(entryId, { due_at: config.dueAt.toISOString() });
+
+    await db.upsertRule({
+      entry_id: entryId,
+      kind: 'primary',
+      frequency: config.frequency,
+      weekly_day: config.frequency === 'weekly' ? config.weeklyDay : null,
+      custom_interval: config.frequency === 'custom' ? config.customInterval : null,
+      custom_unit: config.frequency === 'custom' ? config.customUnit : null,
+      relative_offset_minutes: null,
+      next_trigger_at: null,
+      active: true,
+    });
+
+    if (config.relativeOffsetMinutes != null) {
+      await db.upsertRule({
+        entry_id: entryId,
+        kind: 'relative',
+        frequency: null,
+        weekly_day: null,
+        custom_interval: null,
+        custom_unit: null,
+        relative_offset_minutes: config.relativeOffsetMinutes,
+        next_trigger_at: null,
+        active: true,
+      });
+    } else {
+      await db.deleteRule(entryId, 'relative');
+    }
+
+    // Reprogramar de cero cancela lo anterior por identificador: nunca se
+    // acumulan notificaciones al reeditar fecha o frecuencia.
+    await reconcileAll();
+    await get().refresh();
+  },
+
+  clearReminder: async (entryId) => {
+    await cancelForEntry(entryId);
+    await db.deleteRule(entryId, 'primary');
+    await db.deleteRule(entryId, 'relative');
+    await db.updateEntry(entryId, { due_at: null });
+    await get().refresh();
+  },
+
+  updateTag: async (id, patch) => {
+    await db.updateTag(id, patch);
+    set({ tags: get().tags.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+  },
+
+  removeTag: async (id) => {
+    await db.deleteTag(id);
+    await get().refresh();
+  },
+
+  addTag: async (name, color) => {
+    const tag = await db.createTag(name, color);
+    if (!tag) return false;
+    set({ tags: [...get().tags, tag] });
+    return true;
+  },
+
+  setSetting: async (key, value) => {
+    const stored = typeof value === 'boolean' ? (value ? '1' : '0') : String(value);
+    await db.writeSetting(key, stored);
+    set({ settings: { ...get().settings, [key]: value } });
+  },
+
+  showToast: (message) => set({ toast: message }),
+  hideToast: () => set({ toast: null }),
+}));
