@@ -12,7 +12,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "org.cec.trazo",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -44,6 +46,18 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7e6452ea-6fe9-4b1c-86a6-dd25be24d0dc"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/7e6452ea-6fe9-4b1c-86a6-dd25be24d0dc"
     }
   }
 }
