@@ -43,7 +43,7 @@ test('el SQL de las migraciones se extrae del archivo real', () => {
   const sql = extractSql();
   assert.ok(sql.length >= 2, 'no se encontró el SQL de migración');
   assert.ok(
-    sql.some((s) => s.includes('CREATE TABLE entries')),
+    sql.some((s) => /CREATE TABLE (IF NOT EXISTS )?entries/.test(s)),
     'falta la creación de entries'
   );
 });
@@ -103,6 +103,66 @@ test('las seis tablas del modelo existen tras migrar', () => {
     ]) {
       assert.ok(tables.includes(expected), `falta la tabla ${expected}`);
     }
+  } finally {
+    db.close();
+  }
+});
+
+/** La SQL con la que se siembran las seis etiquetas, extraída de `runAsync`. */
+function seedTagsSql(): string {
+  const match = source.match(/runAsync\(\s*'(INSERT[^']*INTO tags[^']*)'/);
+  assert.ok(match, 'no se encontró el INSERT de las etiquetas');
+  return match![1];
+}
+
+/**
+ * Ejecuta las migraciones reflejando lo que `migrate()` hace en TypeScript y
+ * que no está en la SQL: la guarda `hasColumn` antes de un ALTER, y el bucle
+ * que siembra las seis etiquetas. Sin esto el test probaría algo que el código
+ * no hace.
+ */
+function runMigrations(db: DatabaseSync): void {
+  for (const statement of extractSql()) {
+    const alter = statement.match(/ALTER TABLE (\w+) ADD COLUMN (\w+)/i);
+
+    if (alter) {
+      const [, table, column] = alter;
+      const exists = db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .some((row) => (row as { name: string }).name === column);
+      if (exists) continue;
+    }
+
+    db.exec(statement);
+
+    // El sembrado va justo después de crear las tablas.
+    if (/CREATE TABLE (IF NOT EXISTS )?tags/.test(statement)) {
+      const insert = db.prepare(seedTagsSql());
+      for (let i = 0; i < 6; i++) {
+        insert.run(`tag-${i + 1}`, `Etiqueta ${i + 1}`, '#b5abfc', i);
+      }
+    }
+  }
+}
+
+test('reintentar la migración sobre una base ya migrada no lanza', () => {
+  // Si una migración futura falla a medias, el siguiente arranque reintenta la
+  // rama desde el principio. Tiene que ser inofensivo.
+  const db = new DatabaseSync(':memory:');
+  try {
+    runMigrations(db);
+    runMigrations(db);
+    runMigrations(db);
+
+    const tags = db.prepare('SELECT COUNT(*) AS n FROM tags').get() as { n: number };
+    assert.equal(tags.n, 6, 'la siembra de etiquetas se duplicó al reintentar');
+
+    const columns = db
+      .prepare('PRAGMA table_info(entries)')
+      .all()
+      .map((row) => (row as { name: string }).name);
+    assert.equal(columns.filter((c) => c === 'calendar_event_id').length, 1);
   } finally {
     db.close();
   }

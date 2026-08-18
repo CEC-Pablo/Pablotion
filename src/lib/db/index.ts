@@ -21,6 +21,15 @@ const SEED_TAGS: { name: string; color: string }[] = [
   { name: 'Salud', color: TAG_PALETTE[5] },
 ];
 
+async function hasColumn(
+  db: SQLite.SQLiteDatabase,
+  table: string,
+  column: string
+): Promise<boolean> {
+  const rows = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  return rows.some((row) => row.name === column);
+}
+
 /**
  * Migraciones **estrictamente secuenciales**: cada rama deja la base tal como
  * estaba en esa versión y la siguiente la transforma. Una instalación limpia
@@ -31,6 +40,12 @@ const SEED_TAGS: { name: string; color: string }[] = [
  * añade con ALTER, la instalación limpia peta con «duplicate column name», la
  * promesa de `getDb()` queda rechazada y la app se queda en la pantalla de
  * carga para siempre, sin mensaje de error. Ya pasó una vez.
+ *
+ * Cada rama es además **idempotente** (CREATE ... IF NOT EXISTS, INSERT OR
+ * IGNORE, ALTER guardado por PRAGMA table_info) y confirma su versión en
+ * cuanto termina. Así, si una migración futura falla a medias, el siguiente
+ * arranque la reintenta desde donde estaba en vez de dejar la base en un
+ * estado del que no se puede salir sin desinstalar.
  */
 async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -41,14 +56,14 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
       PRAGMA journal_mode = 'wal';
       PRAGMA foreign_keys = ON;
 
-      CREATE TABLE tags (
+      CREATE TABLE IF NOT EXISTS tags (
         id        TEXT PRIMARY KEY NOT NULL,
         name      TEXT NOT NULL,
         color     TEXT NOT NULL,
         position  INTEGER NOT NULL
       );
 
-      CREATE TABLE entries (
+      CREATE TABLE IF NOT EXISTS entries (
         id          TEXT PRIMARY KEY NOT NULL,
         type        TEXT NOT NULL CHECK (type IN ('note','task','reminder')),
         title       TEXT NOT NULL DEFAULT '',
@@ -61,10 +76,10 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         priority    TEXT CHECK (priority IN ('high','medium','low'))
       );
 
-      CREATE INDEX idx_entries_created ON entries (created_at DESC);
-      CREATE INDEX idx_entries_type    ON entries (type);
+      CREATE INDEX IF NOT EXISTS idx_entries_created ON entries (created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_entries_type    ON entries (type);
 
-      CREATE TABLE subtasks (
+      CREATE TABLE IF NOT EXISTS subtasks (
         id        TEXT PRIMARY KEY NOT NULL,
         entry_id  TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
         text      TEXT NOT NULL,
@@ -72,11 +87,11 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         position  INTEGER NOT NULL
       );
 
-      CREATE INDEX idx_subtasks_entry ON subtasks (entry_id, position);
+      CREATE INDEX IF NOT EXISTS idx_subtasks_entry ON subtasks (entry_id, position);
 
       -- Tabla separada, no un objeto embebido: es lo que permite que la regla
       -- relativa sea independiente y combinable con cualquier frecuencia (§3.1).
-      CREATE TABLE notification_rules (
+      CREATE TABLE IF NOT EXISTS notification_rules (
         id                      TEXT PRIMARY KEY NOT NULL,
         entry_id                TEXT NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
         kind                    TEXT NOT NULL CHECK (kind IN ('primary','relative')),
@@ -90,47 +105,47 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         UNIQUE (entry_id, kind)
       );
 
-      CREATE INDEX idx_rules_entry ON notification_rules (entry_id);
+      CREATE INDEX IF NOT EXISTS idx_rules_entry ON notification_rules (entry_id);
 
       -- Identificadores devueltos por Expo, para poder cancelar sin duplicar (§6.3).
-      CREATE TABLE scheduled_notifications (
+      CREATE TABLE IF NOT EXISTS scheduled_notifications (
         id              TEXT PRIMARY KEY NOT NULL,
         rule_id         TEXT NOT NULL REFERENCES notification_rules(id) ON DELETE CASCADE,
         notification_id TEXT NOT NULL,
         fire_at         TEXT NOT NULL
       );
 
-      CREATE INDEX idx_sched_rule ON scheduled_notifications (rule_id);
-      CREATE INDEX idx_sched_fire ON scheduled_notifications (fire_at);
+      CREATE INDEX IF NOT EXISTS idx_sched_rule ON scheduled_notifications (rule_id);
+      CREATE INDEX IF NOT EXISTS idx_sched_fire ON scheduled_notifications (fire_at);
 
       -- Los interruptores de Ajustes. Clave/valor para no migrar por cada uno.
-      CREATE TABLE settings (
+      CREATE TABLE IF NOT EXISTS settings (
         key   TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL
       );
     `);
 
     for (const [i, tag] of SEED_TAGS.entries()) {
-      await db.runAsync('INSERT INTO tags (id, name, color, position) VALUES (?, ?, ?, ?)', [
-        `tag-${i + 1}`,
-        tag.name,
-        tag.color,
-        i,
-      ]);
+      await db.runAsync(
+        'INSERT OR IGNORE INTO tags (id, name, color, position) VALUES (?, ?, ?, ?)',
+        [`tag-${i + 1}`, tag.name, tag.color, i]
+      );
     }
 
     version = 1;
+    await db.execAsync('PRAGMA user_version = 1');
   }
 
   if (version === 1) {
     // Aditiva a propósito: no se recrea la tabla, para no tocar los datos que
     // ya haya. Guarda el id del evento del calendario del teléfono cuando el
     // recordatorio se sincroniza (opcional, por recordatorio).
-    await db.execAsync('ALTER TABLE entries ADD COLUMN calendar_event_id TEXT');
+    if (!(await hasColumn(db, 'entries', 'calendar_event_id'))) {
+      await db.execAsync('ALTER TABLE entries ADD COLUMN calendar_event_id TEXT');
+    }
     version = 2;
+    await db.execAsync('PRAGMA user_version = 2');
   }
-
-  await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
 let handle: Promise<SQLite.SQLiteDatabase> | null = null;

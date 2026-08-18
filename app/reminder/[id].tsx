@@ -22,11 +22,12 @@ import {
   type FrequencyValue,
 } from '../../src/features/reminders/FrequencySelector';
 import { PreviewCard } from '../../src/features/reminders/PreviewCard';
+import { TimeRow } from '../../src/features/reminders/TimeRow';
 import { buildPreview } from '../../src/features/reminders/preview';
 import { toast as toastText } from '../../src/i18n';
-import { formatFullDate, formatTime, toAppWeekday, withHour } from '../../src/lib/dates';
+import { formatFullDate, toAppWeekday, withTime } from '../../src/lib/dates';
 import { useStore } from '../../src/store/useStore';
-import { HOUR_CYCLE, type NotificationRule } from '../../src/types';
+import type { NotificationRule } from '../../src/types';
 import { color, layout, radius, type as typography } from '../../src/theme/tokens';
 
 /** Referencia estable para las entradas que aún no tienen reglas. */
@@ -52,11 +53,12 @@ export default function ReminderCreator() {
   const initial = useMemo(() => {
     const primary = rules.find((r) => r.kind === 'primary');
     const relative = rules.find((r) => r.kind === 'relative');
-    const due = entry?.due_at ? new Date(entry.due_at) : withHour(addDays(now, 1), 9);
+    const due = entry?.due_at ? new Date(entry.due_at) : withTime(addDays(now, 1), 9);
 
     return {
       date: due,
       hour: due.getHours(),
+      minute: due.getMinutes(),
       frequency: {
         frequency: primary?.frequency ?? 'once',
         weeklyDay: primary?.weekly_day ?? toAppWeekday(due),
@@ -69,12 +71,13 @@ export default function ReminderCreator() {
 
   const [date, setDate] = useState(initial.date);
   const [hour, setHour] = useState(initial.hour);
+  const [minute, setMinute] = useState(initial.minute);
   const [frequency, setFrequency] = useState<FrequencyValue>(initial.frequency);
   const [syncToCalendar, setSyncToCalendar] = useState(
     entry?.calendar_event_id != null
   );
 
-  const dueAt = withHour(date, hour);
+  const dueAt = withTime(date, hour, minute);
 
   // Recálculo en vivo: es una función pura y barata, no necesita memo pesado.
   const preview = buildPreview({
@@ -96,24 +99,32 @@ export default function ReminderCreator() {
     [now]
   );
 
-  const cycleHour = () => {
-    const index = HOUR_CYCLE.indexOf(hour as (typeof HOUR_CYCLE)[number]);
-    setHour(HOUR_CYCLE[(index + 1) % HOUR_CYCLE.length]);
-  };
+  const [saving, setSaving] = useState(false);
 
   const handleDone = async () => {
-    if (!id) return;
-    await saveReminder(id, {
-      dueAt,
-      frequency: frequency.frequency,
-      weeklyDay: frequency.weeklyDay,
-      customInterval: frequency.customInterval,
-      customUnit: frequency.customUnit,
-      relativeOffsetMinutes: frequency.relativeOffsetMinutes,
-      syncToCalendar,
-    });
-    showToast(toastText.scheduled(formatFullDate(dueAt)));
-    router.back();
+    if (!id || saving) return;
+    setSaving(true);
+
+    try {
+      await saveReminder(id, {
+        dueAt,
+        frequency: frequency.frequency,
+        weeklyDay: frequency.weeklyDay,
+        customInterval: frequency.customInterval,
+        customUnit: frequency.customUnit,
+        relativeOffsetMinutes: frequency.relativeOffsetMinutes,
+        syncToCalendar,
+      });
+      showToast(toastText.scheduled(formatFullDate(dueAt)));
+      router.back();
+    } catch (error) {
+      // Antes cualquier excepción aquí quedaba en una promesa rechazada sin
+      // manejar: la hoja no se cerraba, no se guardaba nada y no aparecía
+      // ningún mensaje. «No pasa nada al pulsar Listo» era exactamente eso.
+      showToast(`No se pudo guardar: ${String(error)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -123,7 +134,12 @@ export default function ReminderCreator() {
           <Icon name="x" size={20} color={color.neutral[400]} />
         </Touchable>
         <Text style={styles.title}>Recordatorio</Text>
-        <Button label="Listo" onPress={handleDone} height={40} />
+        <Button
+          label={saving ? "Guardando…" : "Listo"}
+          onPress={handleDone}
+          disabled={saving}
+          height={40}
+        />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
@@ -153,19 +169,16 @@ export default function ReminderCreator() {
 
         <Calendar selected={date} onSelect={setDate} now={now} />
 
-        <View style={styles.hourRow}>
-          <View style={styles.hourLabel}>
-            <Icon name="clock" size={16} color={color.neutral[400]} />
-            <Text style={[typography.body, { color: color.neutral[400] }]}>Hora</Text>
-          </View>
-          {/* Cicla entre 8:00 · 9:00 · 13:00 · 18:00 · 21:00. No es un time
-              picker libre: es una decisión de diseño para reducir pasos. */}
-          <Button
-            label={formatTime(withHour(date, hour))}
-            onPress={cycleHour}
-            height={layout.minTouch}
-          />
-        </View>
+        {/* Los cinco atajos del diseño siguen a un toque, pero ya no son la
+            única opción: debajo se puede escribir cualquier hora. */}
+        <TimeRow
+          hour={hour}
+          minute={minute}
+          onChange={(nextHour, nextMinute) => {
+            setHour(nextHour);
+            setMinute(nextMinute);
+          }}
+        />
 
         <FrequencySelector value={frequency} onChange={setFrequency} />
 
@@ -240,20 +253,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 10,
-  },
-  hourRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: color.divider,
-    marginTop: 12,
-    paddingTop: 10,
-  },
-  hourLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
   },
   calendarRow: {
     flexDirection: 'row',

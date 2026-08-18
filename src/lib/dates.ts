@@ -80,13 +80,40 @@ export function headerDate(date: Date = new Date()): string {
 }
 
 /**
- * Aplica una hora del ciclado a una fecha, dejando minutos y segundos a cero.
- * Devuelve un `Date` nuevo; no muta el argumento.
+ * Aplica hora y minuto a una fecha. Devuelve un `Date` nuevo; no muta el
+ * argumento. Los valores se acotan al rango válido para que un dato corrupto
+ * no produzca un `Invalid Date` que reviente al serializar a ISO.
  */
-export function withHour(date: Date, hour: number): Date {
+export function withTime(date: Date, hour: number, minute: number = 0): Date {
   const next = new Date(date);
-  next.setHours(hour, 0, 0, 0);
+  const safeHour = Number.isFinite(hour) ? Math.min(23, Math.max(0, Math.trunc(hour))) : 0;
+  const safeMinute = Number.isFinite(minute)
+    ? Math.min(59, Math.max(0, Math.trunc(minute)))
+    : 0;
+  next.setHours(safeHour, safeMinute, 0, 0);
   return next;
+}
+
+/** Formatea «HH:MM» con cero a la izquierda, para el campo de hora manual. */
+export function formatHHMM(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+/**
+ * Interpreta lo que el usuario escribe en el campo de hora. Acepta «9», «9:5»,
+ * «09:05», «21.30». Devuelve `null` si no hay una hora válida todavía, para
+ * que el campo pueda estar a medio escribir sin romper nada.
+ */
+export function parseHHMM(text: string): { hour: number; minute: number } | null {
+  const match = text.trim().match(/^(\d{1,2})\s*[:.,]?\s*(\d{1,2})?$/);
+  if (!match) return null;
+
+  const hour = Number(match[1]);
+  const minute = match[2] === undefined ? 0 : Number(match[2]);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
+
+  return { hour, minute };
 }
 
 /** ¿Es un día anterior a hoy? Las celdas pasadas van deshabilitadas (§6.2). */
