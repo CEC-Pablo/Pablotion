@@ -12,8 +12,8 @@ import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
-import { AppState, View, type AppStateStatus } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, StyleSheet, Text, View, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -42,18 +42,40 @@ export default function RootLayout() {
   const onboarded = useStore((s) => s.settings.onboarded);
   const appState = useRef(AppState.currentState);
   const router = useRouter();
+  const [startupError, setStartupError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      // El canal va antes de programar nada: sin él, Android descarta las
-      // notificaciones en silencio.
-      await ensureChannel();
-      await load();
+      // El canal, los permisos y la reprogramación son accesorios: si fallan,
+      // la app tiene que arrancar igual y avisar por su cuenta. Lo único
+      // imprescindible es la base de datos.
+      try {
+        // El canal va antes de programar nada: sin él, Android descarta las
+        // notificaciones en silencio.
+        await ensureChannel();
+      } catch {
+        // Sin canal no llegarán notificaciones, pero la app es usable.
+      }
+
+      try {
+        await load();
+      } catch (error) {
+        // Antes esto dejaba `ready` en false para siempre y la app se quedaba
+        // en un fondo sólido sin decir nada. Ahora al menos se ve qué pasó.
+        if (!cancelled) setStartupError(String(error));
+        return;
+      }
+
       if (cancelled) return;
-      await ensurePermissions();
-      await reconcileAll();
+
+      try {
+        await ensurePermissions();
+        await reconcileAll();
+      } catch {
+        // Idem: no bloquea el arranque.
+      }
     })();
 
     return () => {
@@ -81,6 +103,17 @@ export default function RootLayout() {
     // pantalla de login: la v1 va sin cuenta (§3.4).
     if (ready && !onboarded) router.replace('/onboarding');
   }, [ready, onboarded, router]);
+
+  if (startupError) {
+    // Sin `fontFamily` a propósito: si las fuentes no cargaron, esta pantalla
+    // tiene que verse igual.
+    return (
+      <View style={styles.errorScreen}>
+        <Text style={styles.errorTitle}>Trazo no pudo arrancar</Text>
+        <Text style={styles.errorBody}>{startupError}</Text>
+      </View>
+    );
+  }
 
   if (!fontsLoaded || !ready) {
     return <View style={{ flex: 1, backgroundColor: color.bg }} />;
@@ -110,3 +143,25 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  errorScreen: {
+    flex: 1,
+    backgroundColor: color.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+    gap: 12,
+  },
+  errorTitle: {
+    fontSize: 20,
+    color: color.text,
+    textAlign: 'center',
+  },
+  errorBody: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: color.neutral[400],
+    textAlign: 'center',
+  },
+});

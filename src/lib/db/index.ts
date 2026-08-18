@@ -21,6 +21,17 @@ const SEED_TAGS: { name: string; color: string }[] = [
   { name: 'Salud', color: TAG_PALETTE[5] },
 ];
 
+/**
+ * Migraciones **estrictamente secuenciales**: cada rama deja la base tal como
+ * estaba en esa versión y la siguiente la transforma. Una instalación limpia
+ * recorre todas las ramas en orden y acaba idéntica a una que venía de antes.
+ *
+ * Es tentador que la rama 0 cree ya el esquema final y se salte el resto. No lo
+ * hagas: si el CREATE TABLE incluye una columna que una migración posterior
+ * añade con ALTER, la instalación limpia peta con «duplicate column name», la
+ * promesa de `getDb()` queda rechazada y la app se queda en la pantalla de
+ * carga para siempre, sin mensaje de error. Ya pasó una vez.
+ */
 async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let version = row?.user_version ?? 0;
@@ -47,8 +58,7 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         updated_at  TEXT NOT NULL,
         due_at      TEXT,
         completed   INTEGER NOT NULL DEFAULT 0,
-        priority    TEXT CHECK (priority IN ('high','medium','low')),
-        calendar_event_id TEXT
+        priority    TEXT CHECK (priority IN ('high','medium','low'))
       );
 
       CREATE INDEX idx_entries_created ON entries (created_at DESC);
@@ -113,9 +123,9 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   }
 
   if (version === 1) {
-    // Aditiva a propósito: la app ya está instalada con datos, así que no se
-    // recrea la tabla. Guarda el id del evento del calendario del teléfono
-    // cuando el recordatorio se sincroniza (opcional, por recordatorio).
+    // Aditiva a propósito: no se recrea la tabla, para no tocar los datos que
+    // ya haya. Guarda el id del evento del calendario del teléfono cuando el
+    // recordatorio se sincroniza (opcional, por recordatorio).
     await db.execAsync('ALTER TABLE entries ADD COLUMN calendar_event_id TEXT');
     version = 2;
   }
