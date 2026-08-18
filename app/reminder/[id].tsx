@@ -25,15 +25,23 @@ import { buildPreview } from '../../src/features/reminders/preview';
 import { toast as toastText } from '../../src/i18n';
 import { formatFullDate, formatTime, toAppWeekday, withHour } from '../../src/lib/dates';
 import { useStore } from '../../src/store/useStore';
-import { HOUR_CYCLE } from '../../src/types';
+import { HOUR_CYCLE, type NotificationRule } from '../../src/types';
 import { color, layout, radius, type as typography } from '../../src/theme/tokens';
+
+/** Referencia estable para las entradas que aún no tienen reglas. */
+const EMPTY_RULES: NotificationRule[] = [];
 
 export default function ReminderCreator() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
 
   const entry = useStore((s) => s.entries.find((e) => e.id === id));
-  const rules = useStore((s) => s.rules[id ?? ''] ?? []);
+  // El valor por defecto va FUERA del selector a propósito: devolver `[]` desde
+  // dentro crea un array nuevo en cada evaluación, y zustand v5 compara
+  // snapshots por referencia, así que el render entra en bucle y la pantalla
+  // revienta. Solo ocurría al abrir un recordatorio que todavía no existe, que
+  // es justo el caso más común.
+  const rules = useStore((s) => s.rules[id ?? '']) ?? EMPTY_RULES;
   const saveReminder = useStore((s) => s.saveReminder);
   const showToast = useStore((s) => s.showToast);
 
