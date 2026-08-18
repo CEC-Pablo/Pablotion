@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Trazo",
+    "name": "Pablotion",
     "slug": "trazo",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -48,7 +48,7 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "Trazo necesita tu calendario para guardar ahí los recordatorios que elijas."
+          "calendarPermission": "Pablotion necesita tu calendario para guardar ahí los recordatorios que elijas."
         }
       ]
     ],

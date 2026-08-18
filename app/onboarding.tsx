@@ -36,7 +36,7 @@ export default function Onboarding() {
     <SafeAreaView style={styles.screen}>
       <View style={styles.brand}>
         <View style={styles.brandRule} />
-        <Text style={styles.brandName}>TRAZO</Text>
+        <Text style={styles.brandName}>PABLOTION</Text>
       </View>
 
       <Animated.View key={step} entering={FadeIn.duration(260)} style={styles.content}>
@@ -102,7 +102,7 @@ function StepTwo() {
       </View>
       <Text style={styles.headline}>{'Escribe.\nNo organices.'}</Text>
       <Text style={styles.body}>
-        Trazo reconoce si lo que escribiste es una nota, una tarea o un recordatorio. Si
+        Pablotion reconoce si lo que escribiste es una nota, una tarea o un recordatorio. Si
         se equivoca, lo cambias con un toque.
       </Text>
     </>

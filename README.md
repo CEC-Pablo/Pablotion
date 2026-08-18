@@ -1,10 +1,16 @@
-# Trazo
+# Pablotion
 
 App móvil de captura rápida: anotar una idea, una tarea o un recordatorio en menos de
 tres segundos, sin carpetas ni pasos de configuración. Interfaz en español, tema oscuro
 únicamente.
 
 > *"Menos pasos, no menos personalidad."*
+
+> El proyecto nació como «Trazo» y así se sigue llamando el repositorio, el
+> `slug` de EAS (`trazo`) y el identificador de paquete (`org.cec.trazo`).
+> Cambiar cualquiera de esos rompería el enlace con el proyecto de EAS o
+> convertiría la app en una instalación distinta. Lo que se ve en el teléfono
+> es **Pablotion**.
 
 Implementa el handoff unificado (`../handoff-trazo-unificado.md`) sobre el paquete de
 diseño Nocturne (`../design_handoff_trazo/`). Las referencias a `§` en los comentarios
@@ -96,7 +102,10 @@ notificaciones locales: cuando la notificación diaria salta con la app terminad
 código nuestro corriendo, así que la segunda no llegaría nunca.
 
 En su lugar se programa una **ventana deslizante**: la serie de las próximas ocurrencias,
-hasta 8 por regla y 56 en total (iOS solo admite 64 solicitudes pendientes por app). Al
+con un tope global de 56 (iOS solo admite 64 solicitudes pendientes por app). Cuántas
+toca a cada regla lo decide `slotsForRule` a partir del intervalo, apuntando a cubrir
+unas 72 horas por delante: ocho huecos son ocho días a frecuencia diaria, pero solo 24
+horas a tres horas, y ahí es donde más falta hace el margen. Suelo de 8, techo de 24. Al
 volver a primer plano se reconcilia todo — se cancela lo pendiente y se reprograma la
 ventana entera. Es un recálculo completo y no un ajuste incremental: cuesta poco, es
 idempotente, y hace que reponer tras un cambio de zona horaria o de horario de verano no
@@ -111,7 +120,7 @@ antes» avise antes de *cada* disparo.
 
 ## Qué está verificado y qué no
 
-Cubierto por `npm test` (34 casos, lógica pura):
+Cubierto por `npm test` (50 casos, lógica pura):
 
 - Las cuatro reglas de detección de tipo, en orden, incluida la precedencia entre ellas.
 - La serie de ocurrencias de las cuatro frecuencias, con fechas de vencimiento pasadas.
@@ -119,6 +128,10 @@ Cubierto por `npm test` (34 casos, lógica pura):
 - Que 10 recordatorios diarios con aviso previo no superan el límite de iOS.
 - Que la hora local se conserva al cruzar un cambio de horario de verano.
 - El texto de la vista previa para cada frecuencia y con aviso previo combinado.
+- Que una regla cada 3 horas sigue cubierta al tercer día sin abrir la app.
+- Que la cadena de migraciones no rompe en una instalación limpia, ejecutando el SQL
+  real contra el SQLite de Node, y que reintentarla es inofensiva.
+- El parseo de la hora manual («9», «09:05», «21.30») y sus casos inválidos.
 
 Verificado sin dispositivo: `tsc --noEmit` limpio y `expo export --platform android`
 empaqueta el bundle completo.
@@ -138,6 +151,9 @@ empaqueta el bundle completo.
 - **Inglés en el modelo y la base**, español solo en la capa de presentación.
 - **0 = lunes** en `weekly_day`, como el diseño. `Date.getDay()` usa 0 = domingo; la
   conversión ocurre en un único sitio, `src/lib/dates.ts`.
+- **Un recordatorio con fecha se completa** como una tarea, y su notificación lleva un
+  botón «Hecho». Es lo que detiene uno insistente; sin eso, «cada 3 horas» no pararía
+  nunca.
 - La detección de tipo **tolera la falta de acentos**. El diseño ya listaba «avisame»
   junto a «avísame»; normalizar extiende esa cortesía al resto de la lista, y es el mismo
   criterio que ya usaba la búsqueda.

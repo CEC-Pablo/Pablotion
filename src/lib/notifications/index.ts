@@ -111,7 +111,7 @@ function contentFor(entry: Entry, rule: NotificationRule): Notifications.Notific
     : null;
 
   return {
-    title: entry.title || 'Trazo',
+    title: entry.title || 'Pablotion',
     body: isRelative && label ? label : entry.body || 'Toca para abrirlo',
     data: { entryId: entry.id, ruleId: rule.id, kind: rule.kind },
     categoryIdentifier: CATEGORY_ID,

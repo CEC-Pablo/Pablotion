@@ -1,4 +1,4 @@
-# Guía rápida: probar Trazo en tu Android
+# Guía rápida: probar Pablotion en tu Android
 
 ## 1. Compilar el APK
 
@@ -30,7 +30,7 @@ Al terminar salen un QR y una URL.
 
 ## 3. Primera vez
 
-1. Abre Trazo. Pasa los tres pasos de bienvenida.
+1. Abre Pablotion. Pasa los tres pasos de bienvenida.
 2. **Acepta el permiso de notificaciones** cuando lo pida. Sin eso no
    llega nada.
 3. En Ajustes de Android, busca Trazo y permite "Alarmas y recordatorios"
@@ -67,5 +67,5 @@ Necesito el texto del error, no una descripción.
 - Si falla la app ya instalada: haz captura de la pantalla del error.
 - Si no llegan las notificaciones: dime qué versión de Android tienes y
   si el teléfono es Xiaomi, Samsung, Huawei u Oppo — esas marcas matan
-  procesos en segundo plano de forma agresiva y hay que darle a Trazo
+  procesos en segundo plano de forma agresiva y hay que darle a Pablotion
   permiso de inicio automático.

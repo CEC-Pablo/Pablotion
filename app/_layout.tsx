@@ -136,7 +136,7 @@ export default function RootLayout() {
     // tiene que verse igual.
     return (
       <View style={styles.errorScreen}>
-        <Text style={styles.errorTitle}>Trazo no pudo arrancar</Text>
+        <Text style={styles.errorTitle}>Pablotion no pudo arrancar</Text>
         <Text style={styles.errorBody}>{startupError}</Text>
       </View>
     );

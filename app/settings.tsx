@@ -132,7 +132,7 @@ export default function Settings() {
         </Section>
 
         <Text style={styles.footer}>
-          Trazo · versión 0.1 · hecho para el Centro de Estudiantes
+          Pablotion · versión 0.1 · hecho para el Centro de Estudiantes
         </Text>
       </ScrollView>
     </SafeAreaView>
