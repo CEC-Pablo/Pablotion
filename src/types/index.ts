@@ -28,6 +28,11 @@ export interface Entry {
   priority: Priority | null;
   /** Solo task. */
   subtasks: Subtask[];
+  /**
+   * Id del evento en el calendario del teléfono, si el recordatorio se
+   * sincronizó. `null` mientras el interruptor esté apagado.
+   */
+  calendar_event_id: string | null;
 }
 
 export interface Subtask {

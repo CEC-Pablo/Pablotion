@@ -26,7 +26,14 @@ import { CaptureCard } from '../../src/features/capture/CaptureCard';
 import { EmptyState } from '../../src/features/capture/EmptyState';
 import { EntryRow } from '../../src/features/capture/EntryRow';
 import { loadSampleData } from '../../src/features/capture/sample';
-import { greeting, thingCount, toast as toastText } from '../../src/i18n';
+import { SelectionBar } from '../../src/features/capture/SelectionBar';
+import {
+  TYPE_CYCLE,
+  TYPE_LABEL_PLURAL,
+  greeting,
+  thingCount,
+  toast as toastText,
+} from '../../src/i18n';
 import { DAY_GROUP_LABEL, dayGroup, headerDate, type DayGroup } from '../../src/lib/dates';
 import { useStore } from '../../src/store/useStore';
 import { color, layout, motion, pull, type as typography } from '../../src/theme/tokens';
@@ -46,6 +53,8 @@ export default function QuickCapture() {
   }, [incoming]);
 
   const [flash, setFlash] = useState(false);
+  /** Modo selección: vacío = apagado. Es estado de UI, no va a la base. */
+  const [selected, setSelected] = useState<string[]>([]);
   const [enteringId, setEnteringId] = useState<string | null>(null);
   const [upToDate, setUpToDate] = useState(false);
 
@@ -54,6 +63,8 @@ export default function QuickCapture() {
   const detect = useStore((s) => s.settings.detect);
   const addEntry = useStore((s) => s.addEntry);
   const toggleTask = useStore((s) => s.toggleTask);
+  const removeEntries = useStore((s) => s.removeEntries);
+  const assignTag = useStore((s) => s.assignTag);
   const refresh = useStore((s) => s.refresh);
   const toast = useStore((s) => s.toast);
   const showToast = useStore((s) => s.showToast);
@@ -133,6 +144,36 @@ export default function QuickCapture() {
     setTimeout(() => setEnteringId(null), motion.enterClear);
   };
 
+  /* ------------------------------------------------------------- selección */
+
+  const selectionMode = selected.length > 0;
+
+  const toggleSelected = (entryId: string) =>
+    setSelected((current) =>
+      current.includes(entryId)
+        ? current.filter((x) => x !== entryId)
+        : [...current, entryId]
+    );
+
+  const handleRowPress = (entryId: string) => {
+    // En modo selección el toque alterna en vez de abrir la nota.
+    if (selectionMode) toggleSelected(entryId);
+    else router.push(`/note/${entryId}`);
+  };
+
+  const handleDeleteSelected = async () => {
+    const count = selected.length;
+    await removeEntries(selected);
+    setSelected([]);
+    showToast(count === 1 ? toastText.deleted : `${count} eliminadas`);
+  };
+
+  const handleAssignTag = async (tagId: string | null) => {
+    await assignTag(selected, tagId);
+    setSelected([]);
+    showToast(tagId ? 'Etiqueta aplicada' : 'Etiqueta quitada');
+  };
+
   const handleSample = async () => {
     await loadSampleData();
     await refresh();
@@ -140,7 +181,7 @@ export default function QuickCapture() {
 
   /* ----------------------------------------------------------------- lista */
 
-  const groups = useMemo(() => groupByDay(entries), [entries]);
+  const groups = useMemo(() => groupByDayAndType(entries), [entries]);
   const isEmpty = entries.length === 0;
 
   return (
@@ -190,23 +231,32 @@ export default function QuickCapture() {
             {isEmpty ? (
               <EmptyState onLoadSample={handleSample} />
             ) : (
-              groups.map(([group, items]) => (
-                <View key={group} style={styles.group}>
-                  <View style={styles.groupHeader}>
-                    <Kicker>{DAY_GROUP_LABEL[group]}</Kicker>
-                    <FadingRule oneSided style={styles.groupRule} />
-                    <Text style={styles.count}>{thingCount(items.length)}</Text>
-                  </View>
+              groups.map((section) => (
+                <View key={section.day} style={styles.group}>
+                  <Text style={styles.dayLabel}>{DAY_GROUP_LABEL[section.day]}</Text>
 
-                  {items.map((entry) => (
-                    <EntryRow
-                      key={entry.id}
-                      entry={entry}
-                      tag={entry.tag_id ? tagById.get(entry.tag_id) : undefined}
-                      entering={entry.id === enteringId}
-                      onPress={() => router.push(`/note/${entry.id}`)}
-                      onToggle={() => void toggleTask(entry.id)}
-                    />
+                  {section.types.map(({ type, items }) => (
+                    <View key={type} style={styles.typeGroup}>
+                      <View style={styles.groupHeader}>
+                        <Kicker>{TYPE_LABEL_PLURAL[type]}</Kicker>
+                        <FadingRule oneSided style={styles.groupRule} />
+                        <Text style={styles.count}>{thingCount(items.length)}</Text>
+                      </View>
+
+                      {items.map((entry) => (
+                        <EntryRow
+                          key={entry.id}
+                          entry={entry}
+                          tag={entry.tag_id ? tagById.get(entry.tag_id) : undefined}
+                          entering={entry.id === enteringId}
+                          selectionMode={selectionMode}
+                          selected={selected.includes(entry.id)}
+                          onPress={() => handleRowPress(entry.id)}
+                          onLongPress={() => toggleSelected(entry.id)}
+                          onToggle={() => void toggleTask(entry.id)}
+                        />
+                      ))}
+                    </View>
                   ))}
                 </View>
               ))
@@ -215,26 +265,55 @@ export default function QuickCapture() {
         </View>
       </GestureDetector>
 
-      <Toast message={toast} onDismiss={hideToast} />
+      {selectionMode ? (
+        <SelectionBar
+          count={selected.length}
+          tags={tags}
+          onCancel={() => setSelected([])}
+          onDelete={() => void handleDeleteSelected()}
+          onAssignTag={(tagId) => void handleAssignTag(tagId)}
+        />
+      ) : (
+        <Toast message={toast} onDismiss={hideToast} />
+      )}
     </SafeAreaView>
   );
 }
 
-/** Los grupos salen de `created_at`; el orden es Hoy → Ayer → Antes. */
-function groupByDay(entries: Entry[]): [DayGroup, Entry[]][] {
-  const order: DayGroup[] = ['today', 'yesterday', 'older'];
-  const buckets = new Map<DayGroup, Entry[]>();
+interface DaySection {
+  day: DayGroup;
+  /** Solo los tipos que tienen algo ese día; nunca un subgrupo vacío. */
+  types: { type: EntryType; items: Entry[] }[];
+}
+
+/**
+ * Los grupos salen de `created_at`, nunca de una cadena fija. El día es el eje
+ * principal (Hoy → Ayer → Antes) y dentro de cada uno se subdivide por tipo,
+ * para que las notas no se mezclen con las tareas y los recordatorios.
+ */
+function groupByDayAndType(entries: Entry[]): DaySection[] {
+  const dayOrder: DayGroup[] = ['today', 'yesterday', 'older'];
+  const byDay = new Map<DayGroup, Entry[]>();
 
   for (const entry of entries) {
-    const group = dayGroup(new Date(entry.created_at));
-    const list = buckets.get(group) ?? [];
+    const day = dayGroup(new Date(entry.created_at));
+    const list = byDay.get(day) ?? [];
     list.push(entry);
-    buckets.set(group, list);
+    byDay.set(day, list);
   }
 
-  return order
-    .filter((g) => buckets.has(g))
-    .map((g) => [g, buckets.get(g)!] as [DayGroup, Entry[]]);
+  return dayOrder
+    .filter((day) => byDay.has(day))
+    .map((day) => {
+      const dayEntries = byDay.get(day)!;
+      return {
+        day,
+        types: TYPE_CYCLE.map((type) => ({
+          type,
+          items: dayEntries.filter((e) => e.type === type),
+        })).filter((section) => section.items.length > 0),
+      };
+    });
 }
 
 const styles = StyleSheet.create({
@@ -269,6 +348,14 @@ const styles = StyleSheet.create({
   },
   group: {
     marginTop: layout.sectionMarginTop,
+  },
+  dayLabel: {
+    ...typography.secondary,
+    color: color.neutral[500],
+    marginBottom: 4,
+  },
+  typeGroup: {
+    marginTop: 12,
     gap: layout.rowGap,
   },
   groupHeader: {

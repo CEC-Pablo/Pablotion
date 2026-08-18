@@ -9,6 +9,7 @@
 
 import { create } from 'zustand';
 
+import * as calendar from '../lib/calendar';
 import * as db from '../lib/db/queries';
 import { cancelForEntry, reconcileAll } from '../lib/notifications';
 import type {
@@ -50,6 +51,8 @@ export interface ReminderConfig {
   customUnit: CustomUnit | null;
   /** Independiente de `frequency` y combinable con cualquiera — §3.1. */
   relativeOffsetMinutes: number | null;
+  /** Guardar también un evento en el calendario del teléfono. */
+  syncToCalendar: boolean;
 }
 
 interface Store {
@@ -74,6 +77,10 @@ interface Store {
     patch: Partial<Pick<Entry, 'type' | 'title' | 'body' | 'tag_id' | 'priority'>>
   ) => Promise<void>;
   removeEntry: (id: string) => Promise<void>;
+  /** Borrado en lote desde el modo selección. */
+  removeEntries: (ids: string[]) => Promise<void>;
+  /** Asigna (o quita, con null) la misma etiqueta a varias entradas. */
+  assignTag: (ids: string[], tagId: string | null) => Promise<void>;
   toggleTask: (id: string) => Promise<void>;
   toggleSubtask: (entryId: string, subtaskId: string) => Promise<void>;
 
@@ -152,6 +159,29 @@ export const useStore = create<Store>((set, get) => ({
     await get().refresh();
   },
 
+  removeEntries: async (ids) => {
+    // Cancelar antes de borrar en todos: si se borra primero, las reglas caen
+    // por cascada y se pierden los identificadores que hay que cancelar.
+    for (const id of ids) {
+      await cancelForEntry(id);
+      await db.deleteEntry(id);
+    }
+    set({ entries: get().entries.filter((e) => !ids.includes(e.id)) });
+    await get().refresh();
+  },
+
+  assignTag: async (ids, tagId) => {
+    for (const id of ids) {
+      await db.updateEntry(id, { tag_id: tagId });
+    }
+    set({
+      entries: get().entries.map((e) =>
+        ids.includes(e.id) ? { ...e, tag_id: tagId } : e
+      ),
+    });
+    await get().refresh();
+  },
+
   toggleTask: async (id) => {
     const entry = get().entries.find((e) => e.id === id);
     if (!entry) return;
@@ -227,6 +257,8 @@ export const useStore = create<Store>((set, get) => ({
       await db.deleteRule(entryId, 'relative');
     }
 
+    await syncCalendarEvent(entryId, config, get);
+
     // Reprogramar de cero cancela lo anterior por identificador: nunca se
     // acumulan notificaciones al reeditar fecha o frecuencia.
     await reconcileAll();
@@ -234,6 +266,11 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   clearReminder: async (entryId) => {
+    const entry = get().entries.find((e) => e.id === entryId);
+    if (entry?.calendar_event_id) {
+      await calendar.deleteEvent(entry.calendar_event_id);
+      await db.updateEntry(entryId, { calendar_event_id: null });
+    }
     await cancelForEntry(entryId);
     await db.deleteRule(entryId, 'primary');
     await db.deleteRule(entryId, 'relative');
@@ -267,3 +304,49 @@ export const useStore = create<Store>((set, get) => ({
   showToast: (message) => set({ toast: message }),
   hideToast: () => set({ toast: null }),
 }));
+
+/**
+ * Mantiene el evento del calendario en sintonía con el recordatorio.
+ *
+ * Que el calendario falle (sin permiso, sin calendario escribible) no puede
+ * impedir que el recordatorio se guarde: las funciones de `lib/calendar`
+ * devuelven `null`/`false` en vez de lanzar, y aquí simplemente se deja el
+ * `calendar_event_id` a null.
+ */
+async function syncCalendarEvent(
+  entryId: string,
+  config: ReminderConfig,
+  get: () => Store
+): Promise<void> {
+  const entry = get().entries.find((e) => e.id === entryId);
+  if (!entry) return;
+
+  const existingId = entry.calendar_event_id;
+
+  if (!config.syncToCalendar) {
+    if (existingId) {
+      await calendar.deleteEvent(existingId);
+      await db.updateEntry(entryId, { calendar_event_id: null });
+    }
+    return;
+  }
+
+  const granted = await calendar.ensureCalendarPermission();
+  if (!granted) return;
+
+  const payload = {
+    title: entry.title,
+    notes: entry.body,
+    startsAt: config.dueAt,
+  };
+
+  if (existingId) {
+    const updated = await calendar.updateEvent(existingId, payload);
+    // El usuario pudo borrar el evento desde la app de calendario; si ya no
+    // está, se crea uno nuevo en vez de quedarse con un id muerto.
+    if (updated) return;
+  }
+
+  const eventId = await calendar.createEvent(payload);
+  await db.updateEntry(entryId, { calendar_event_id: eventId });
+}

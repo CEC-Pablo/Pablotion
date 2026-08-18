@@ -9,7 +9,7 @@ import * as SQLite from 'expo-sqlite';
 import { TAG_PALETTE } from '../../theme/tokens';
 
 const DATABASE_NAME = 'trazo.db';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 /** Las seis etiquetas sembradas al instalar. Seis en total, no seis por nota. */
 const SEED_TAGS: { name: string; color: string }[] = [
@@ -47,7 +47,8 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
         updated_at  TEXT NOT NULL,
         due_at      TEXT,
         completed   INTEGER NOT NULL DEFAULT 0,
-        priority    TEXT CHECK (priority IN ('high','medium','low'))
+        priority    TEXT CHECK (priority IN ('high','medium','low')),
+        calendar_event_id TEXT
       );
 
       CREATE INDEX idx_entries_created ON entries (created_at DESC);
@@ -109,6 +110,14 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     }
 
     version = 1;
+  }
+
+  if (version === 1) {
+    // Aditiva a propósito: la app ya está instalada con datos, así que no se
+    // recrea la tabla. Guarda el id del evento del calendario del teléfono
+    // cuando el recordatorio se sincroniza (opcional, por recordatorio).
+    await db.execAsync('ALTER TABLE entries ADD COLUMN calendar_event_id TEXT');
+    version = 2;
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

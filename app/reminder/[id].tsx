@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../src/components/Button';
 import { Chip } from '../../src/components/Chip';
 import { Icon } from '../../src/components/Icon';
+import { Switch } from '../../src/components/Switch';
 import { Kicker, Touchable } from '../../src/components/primitives';
 import { Calendar } from '../../src/features/reminders/Calendar';
 import {
@@ -69,6 +70,9 @@ export default function ReminderCreator() {
   const [date, setDate] = useState(initial.date);
   const [hour, setHour] = useState(initial.hour);
   const [frequency, setFrequency] = useState<FrequencyValue>(initial.frequency);
+  const [syncToCalendar, setSyncToCalendar] = useState(
+    entry?.calendar_event_id != null
+  );
 
   const dueAt = withHour(date, hour);
 
@@ -106,6 +110,7 @@ export default function ReminderCreator() {
       customInterval: frequency.customInterval,
       customUnit: frequency.customUnit,
       relativeOffsetMinutes: frequency.relativeOffsetMinutes,
+      syncToCalendar,
     });
     showToast(toastText.scheduled(formatFullDate(dueAt)));
     router.back();
@@ -163,6 +168,27 @@ export default function ReminderCreator() {
         </View>
 
         <FrequencySelector value={frequency} onChange={setFrequency} />
+
+        {/* El permiso de calendario se pide al activar el interruptor, no al
+            arrancar la app: quien no lo use nunca ve el diálogo. */}
+        <View style={styles.calendarRow}>
+          <View style={styles.calendarLabel}>
+            <Icon name="clock-counter-clockwise" size={16} color={color.neutral[400]} />
+            <View style={{ flex: 1 }}>
+              <Text style={[typography.row, { color: color.text }]}>
+                Guardar en el calendario
+              </Text>
+              <Text style={styles.calendarHint}>
+                Crea un evento en el calendario del teléfono
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={syncToCalendar}
+            onChange={setSyncToCalendar}
+            accessibilityLabel="Guardar en el calendario del teléfono"
+          />
+        </View>
 
         <View style={styles.previewWrap}>
           <PreviewCard preview={preview} />
@@ -228,6 +254,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  calendarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: color.divider,
+    marginTop: layout.sectionMarginTop,
+    paddingTop: 14,
+    minHeight: layout.minTouch,
+  },
+  calendarLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  calendarHint: {
+    ...typography.meta,
+    fontSize: 12,
+    color: color.neutral[600],
+    marginTop: 2,
   },
   previewWrap: {
     marginTop: layout.sectionMarginTop,

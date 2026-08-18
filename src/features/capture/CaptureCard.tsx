@@ -18,7 +18,6 @@ import { Touchable } from '../../components/primitives';
 import { TYPE_CYCLE, TYPE_LABEL } from '../../i18n';
 import {
   color,
-  layout,
   motion,
   radius,
   ring,
@@ -98,11 +97,6 @@ export function CaptureCard({
     setOverride(null);
   };
 
-  const cycleType = () => {
-    const index = TYPE_CYCLE.indexOf(type);
-    setOverride(TYPE_CYCLE[(index + 1) % TYPE_CYCLE.length]);
-  };
-
   return (
     <View>
       <Animated.View
@@ -128,24 +122,42 @@ export function CaptureCard({
         />
 
         <View style={styles.bottomRow}>
-          <Animated.View style={[styles.chipWrap, chipStyle]} pointerEvents={hasText ? 'auto' : 'none'}>
-            <View style={styles.chip}>
-              <Icon name={TYPE_ICON[type]} size={13} color={color.accent} />
-              <Text style={[typography.meta, { fontSize: 12, color: color.accent }]}>
-                {TYPE_LABEL[type]}
-              </Text>
-            </View>
-            <Pressable
-              onPress={cycleType}
-              hitSlop={14}
-              accessibilityRole="button"
-              accessibilityLabel="Cambiar el tipo detectado"
-              style={styles.change}
-            >
-              <Text style={[typography.meta, { fontSize: 12, color: color.neutral[600] }]}>
-                cambiar
-              </Text>
-            </Pressable>
+          {/* Los tres tipos a la vista. El detectado aparece marcado y tocar
+              otro fija el override, sin tener que ciclar a ciegas. */}
+          <Animated.View
+            style={[styles.typeRow, chipStyle]}
+            pointerEvents={hasText ? 'auto' : 'none'}
+          >
+            {TYPE_CYCLE.map((option) => {
+              const active = option === type;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => setOverride(option)}
+                  hitSlop={{ top: 5, bottom: 5, left: 0, right: 0 }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={TYPE_LABEL[option]}
+                  style={({ pressed }) => [
+                    styles.typeOption,
+                    active && { borderColor: color.accent },
+                    { opacity: pressed ? 0.72 : 1 },
+                  ]}
+                >
+                  <Icon
+                    name={TYPE_ICON[option]}
+                    size={13}
+                    color={active ? color.accent : color.neutral[600]}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.typeLabel, active && { color: color.accent }]}
+                  >
+                    {TYPE_LABEL[option]}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </Animated.View>
 
           <Touchable
@@ -192,25 +204,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  chipWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  chip: {
+  typeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    borderWidth: 1,
-    borderColor: color.accent,
-    borderRadius: radius.md,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    flexShrink: 1,
   },
-  change: {
-    height: layout.minTouch,
+  typeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: color.divider,
+    borderRadius: radius.md,
     paddingHorizontal: 8,
-    justifyContent: 'center',
+    // 34 px pintados + 5 px de hitSlop arriba y abajo = los 44 px de rigor.
+    minHeight: 34,
+  },
+  typeLabel: {
+    ...typography.meta,
+    fontSize: 12,
+    color: color.neutral[600],
+    flexShrink: 1,
   },
   submit: {
     width: 38,

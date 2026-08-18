@@ -21,15 +21,22 @@ export function EntryRow({
   entry,
   tag,
   onPress,
+  onLongPress,
   onToggle,
   entering,
+  selectionMode = false,
+  selected = false,
 }: {
   entry: Entry;
   tag: Tag | undefined;
   onPress: () => void;
+  /** Mantener pulsado entra en modo selección. */
+  onLongPress?: () => void;
   onToggle: () => void;
   /** Recién guardada: fondo `accent-900` que se desvanece. */
   entering?: boolean;
+  selectionMode?: boolean;
+  selected?: boolean;
 }) {
   const due = entry.due_at ? new Date(entry.due_at) : null;
 
@@ -37,19 +44,34 @@ export function EntryRow({
     <Animated.View entering={FadeInDown.duration(motion.rowEnter)}>
       <Pressable
         onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={350}
         accessibilityRole="button"
+        accessibilityState={{ selected }}
         style={({ pressed }) => [
           styles.row,
+          selected && styles.rowSelected,
           {
-            backgroundColor: entering
+            backgroundColor: selected
               ? color.accentRamp[900]
-              : pressed
-                ? color.neutral[900]
-                : 'transparent',
+              : entering
+                ? color.accentRamp[900]
+                : pressed
+                  ? color.neutral[900]
+                  : 'transparent',
           },
         ]}
       >
-        {entry.type === 'task' ? (
+        {/* En modo selección el checkbox de la tarea cedería su toque al
+            marcado, así que se sustituye por el indicador de selección y
+            todas las filas se comportan igual. */}
+        {selectionMode ? (
+          <View style={styles.iconSlot}>
+            <View style={[styles.selectDot, selected && styles.selectDotOn]}>
+              {selected ? <Icon name="check" size={12} color={color.bg} /> : null}
+            </View>
+          </View>
+        ) : entry.type === 'task' ? (
           <Checkbox
             checked={entry.completed}
             onToggle={onToggle}
@@ -100,6 +122,24 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: layout.rowPadding,
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  rowSelected: {
+    borderColor: color.accent,
+  },
+  selectDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: color.neutral[700],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectDotOn: {
+    backgroundColor: color.accent,
+    borderColor: color.accent,
   },
   iconSlot: {
     width: 22,

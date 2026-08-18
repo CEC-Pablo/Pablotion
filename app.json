@@ -29,7 +29,9 @@
       "permissions": [
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
       ]
     },
     "plugins": [
@@ -41,6 +43,12 @@
         {
           "color": "#9184d9",
           "defaultChannel": "trazo-reminders"
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Trazo necesita tu calendario para guardar ahí los recordatorios que elijas."
         }
       ]
     ],

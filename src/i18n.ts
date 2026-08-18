@@ -11,8 +11,15 @@ export const TYPE_LABEL: Record<EntryType, string> = {
   reminder: 'Recordatorio',
 };
 
-/** El chip "cambiar" cicla en este orden. */
+/** Orden en que se ofrecen los tres tipos, tanto en la captura como en la lista. */
 export const TYPE_CYCLE: EntryType[] = ['note', 'task', 'reminder'];
+
+/** Encabezados de los subgrupos de la lista de Inicio. */
+export const TYPE_LABEL_PLURAL: Record<EntryType, string> = {
+  note: 'Notas',
+  task: 'Tareas',
+  reminder: 'Recordatorios',
+};
 
 export const FREQUENCY_LABEL: Record<Frequency, string> = {
   once: 'Una sola vez',

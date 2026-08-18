@@ -42,6 +42,7 @@ export default function NoteEditor() {
 
   const [title, setTitle] = useState(entry?.title ?? '');
   const [body, setBody] = useState(entry?.body ?? '');
+  const [pickingTag, setPickingTag] = useState(false);
   const dirty = useRef(false);
 
   const tag = useMemo(
@@ -122,7 +123,12 @@ export default function NoteEditor() {
 
         <FadingRule fade={24} style={{ marginVertical: 14 }} />
 
-        <View style={styles.metaRow}>
+        <Pressable
+          onPress={() => setPickingTag(!pickingTag)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: pickingTag }}
+          style={styles.metaRow}
+        >
           <Icon name="tag" size={17} color={color.neutral[500]} />
           <Text style={styles.metaLabel}>Etiqueta</Text>
           {tag ? (
@@ -133,7 +139,45 @@ export default function NoteEditor() {
           ) : (
             <Text style={[styles.metaValue, { color: color.neutral[600] }]}>Ninguna</Text>
           )}
-        </View>
+          <Icon name="caret-down" size={14} color={color.neutral[600]} />
+        </Pressable>
+
+        {pickingTag ? (
+          <View style={styles.tagPicker}>
+            {tags.map((option) => {
+              const active = option.id === entry.tag_id;
+              return (
+                <Pressable
+                  key={option.id}
+                  // Volver a tocar la etiqueta activa la quita: es la forma más
+                  // corta de dejar una nota sin etiqueta.
+                  onPress={() => {
+                    void patchEntry(id, { tag_id: active ? null : option.id });
+                    setPickingTag(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={option.name}
+                  style={({ pressed }) => [
+                    styles.tagOption,
+                    active && { borderColor: color.accent },
+                    { opacity: pressed ? 0.72 : 1 },
+                  ]}
+                >
+                  <TagDot color={option.color} size={8} />
+                  <Text
+                    style={[
+                      styles.metaValue,
+                      { color: active ? color.accent : color.neutral[400] },
+                    ]}
+                  >
+                    {option.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
 
         <Pressable
           onPress={() => router.push(`/reminder/${id}`)}
@@ -239,6 +283,22 @@ const styles = StyleSheet.create({
   metaValue: {
     ...typography.secondary,
     color: color.text,
+  },
+  tagPicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 12,
+  },
+  tagOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: color.divider,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    minHeight: layout.minTouch,
   },
   tagChip: {
     flexDirection: 'row',

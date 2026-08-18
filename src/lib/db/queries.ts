@@ -28,6 +28,7 @@ interface EntryRow {
   due_at: string | null;
   completed: number;
   priority: Priority | null;
+  calendar_event_id: string | null;
 }
 
 interface SubtaskRow {
@@ -133,11 +134,22 @@ export async function createEntry(input: {
     completed: false,
     priority: input.priority ?? null,
     subtasks: [],
+    calendar_event_id: null,
   };
 }
 
 type EntryPatch = Partial<
-  Pick<Entry, 'type' | 'title' | 'body' | 'tag_id' | 'due_at' | 'completed' | 'priority'>
+  Pick<
+    Entry,
+    | 'type'
+    | 'title'
+    | 'body'
+    | 'tag_id'
+    | 'due_at'
+    | 'completed'
+    | 'priority'
+    | 'calendar_event_id'
+  >
 >;
 
 export async function updateEntry(entryId: string, patch: EntryPatch): Promise<void> {
