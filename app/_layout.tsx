@@ -17,7 +17,13 @@ import { AppState, StyleSheet, Text, View, type AppStateStatus } from 'react-nat
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { ensureChannel, ensurePermissions, reconcileAll } from '../src/lib/notifications';
+import {
+  ACTION_DONE,
+  ensureCategory,
+  ensureChannel,
+  ensurePermissions,
+  reconcileAll,
+} from '../src/lib/notifications';
 import { useStore } from '../src/store/useStore';
 import { color } from '../src/theme/tokens';
 
@@ -55,6 +61,7 @@ export default function RootLayout() {
         // El canal va antes de programar nada: sin él, Android descarta las
         // notificaciones en silencio.
         await ensureChannel();
+        await ensureCategory();
       } catch {
         // Sin canal no llegarán notificaciones, pero la app es usable.
       }
@@ -95,6 +102,26 @@ export default function RootLayout() {
     };
 
     const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    // El botón «Hecho» de la notificación. Es la forma de parar un
+    // recordatorio insistente sin abrir la app y buscarlo a mano.
+    //
+    // En iOS, con la app terminada, no se puede ejecutar código al tocar la
+    // notificación: la respuesta llega cuando la app arranca. Por eso esto no
+    // es el mecanismo, solo un atajo — la reconciliación al abrir es la que
+    // garantiza el estado.
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (response.actionIdentifier !== ACTION_DONE) return;
+
+      const entryId = response.notification.request.content.data?.entryId;
+      if (typeof entryId === 'string') {
+        void useStore.getState().setCompleted(entryId, true);
+      }
+    });
+
     return () => sub.remove();
   }, []);
 

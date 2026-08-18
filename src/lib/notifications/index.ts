@@ -35,6 +35,29 @@ import type { Entry, NotificationRule } from '../../types';
 
 export const CHANNEL_ID = 'trazo-reminders';
 
+/** Categoría que da a la notificación su botón «Hecho». */
+export const CATEGORY_ID = 'trazo-reminder';
+
+/** Identificador de la acción; se compara al recibir la respuesta. */
+export const ACTION_DONE = 'done';
+
+/**
+ * Registra el botón «Hecho» de la notificación.
+ *
+ * Es la única forma de parar un recordatorio insistente sin abrir la app y
+ * buscarlo. `opensAppToForeground: false` evita que el teléfono salte a la app
+ * al pulsarlo; en Android la respuesta se procesa igualmente al arrancar.
+ */
+export async function ensureCategory(): Promise<void> {
+  await Notifications.setNotificationCategoryAsync(CATEGORY_ID, [
+    {
+      identifier: ACTION_DONE,
+      buttonTitle: 'Hecho',
+      options: { opensAppToForeground: false },
+    },
+  ]);
+}
+
 /**
  * En Android hay que crear el canal **antes** de programar nada, o el sistema
  * descarta las notificaciones en silencio. Se llama al arrancar la app.
@@ -91,6 +114,7 @@ function contentFor(entry: Entry, rule: NotificationRule): Notifications.Notific
     title: entry.title || 'Trazo',
     body: isRelative && label ? label : entry.body || 'Toca para abrirlo',
     data: { entryId: entry.id, ruleId: rule.id, kind: rule.kind },
+    categoryIdentifier: CATEGORY_ID,
     sound: true,
   };
 }

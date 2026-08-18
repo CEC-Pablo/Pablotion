@@ -5,7 +5,10 @@ import { differenceInCalendarDays } from 'date-fns';
 
 import {
   WINDOW_GLOBAL,
+  WINDOW_MAX_PER_RULE,
+  WINDOW_PER_RULE,
   allocateWindow,
+  slotsForRule,
   primaryOccurrences,
   relativeFromDue,
   relativeOccurrences,
@@ -239,4 +242,70 @@ test('allocateWindow — descarta las reglas sin ocurrencias', () => {
   ]);
   assert.equal(out.length, 1);
   assert.equal(out[0].ruleId, 'viva');
+});
+
+/* ------------------------------------------------- ventana según intervalo */
+
+test('slotsForRule cubre ~3 días cuando el intervalo es corto', () => {
+  // El caso que motiva todo esto: cada 3 horas con 8 huecos solo cubría 24 h.
+  const cada3h = slotsForRule(
+    spec({ frequency: 'custom', customInterval: 3, customUnit: 'hours' })
+  );
+  assert.equal(cada3h, 24, 'cada 3 horas debería cubrir 72 h, no 24');
+  assert.ok(cada3h * 3 >= 72, 'la cobertura no llega a los 3 días');
+});
+
+test('slotsForRule conserva el margen largo de las reglas espaciadas', () => {
+  // Diaria y semanal ya cubrían de sobra: no deben perder huecos.
+  assert.equal(slotsForRule(spec({ frequency: 'daily' })), WINDOW_PER_RULE);
+  assert.equal(
+    slotsForRule(spec({ frequency: 'weekly', weeklyDay: 0 })),
+    WINDOW_PER_RULE
+  );
+});
+
+test('slotsForRule tiene techo: una regla cada hora no acapara el presupuesto', () => {
+  const cada1h = slotsForRule(
+    spec({ frequency: 'custom', customInterval: 1, customUnit: 'hours' })
+  );
+  assert.equal(cada1h, WINDOW_MAX_PER_RULE);
+  assert.ok(cada1h <= WINDOW_GLOBAL / 2, 'una sola regla se come medio presupuesto');
+});
+
+test('slotsForRule da un único hueco a «una sola vez»', () => {
+  assert.equal(slotsForRule(spec({ frequency: 'once' })), 1);
+});
+
+test('una regla cada 3 horas sigue avisando al tercer día sin abrir la app', () => {
+  const now = at('2026-08-17T08:00:00');
+  const out = primaryOccurrences(
+    spec({ frequency: 'custom', customInterval: 3, customUnit: 'hours' }),
+    at('2026-08-17T09:00:00'),
+    now
+  );
+
+  const ultima = out[out.length - 1];
+  const horasCubiertas = (ultima.getTime() - now.getTime()) / 3_600_000;
+  assert.ok(horasCubiertas >= 70, `solo cubre ${horasCubiertas} h`);
+});
+
+test('el tope global sigue respetándose con reglas insistentes', () => {
+  const now = at('2026-08-17T08:00:00');
+  const insistente = spec({
+    frequency: 'custom',
+    customInterval: 3,
+    customUnit: 'hours',
+  });
+
+  const plans: RulePlan[] = [];
+  for (let i = 0; i < 6; i++) {
+    plans.push({
+      ruleId: `r${i}`,
+      occurrences: primaryOccurrences(insistente, at('2026-08-17T09:00:00'), now),
+    });
+  }
+
+  const total = allocateWindow(plans).reduce((n, p) => n + p.occurrences.length, 0);
+  assert.ok(total <= WINDOW_GLOBAL, `${total} supera el tope de ${WINDOW_GLOBAL}`);
+  assert.ok(total <= 64, 'supera el límite duro de iOS');
 });

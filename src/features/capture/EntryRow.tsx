@@ -40,6 +40,11 @@ export function EntryRow({
 }) {
   const due = entry.due_at ? new Date(entry.due_at) : null;
 
+  // Un recordatorio con fecha también se completa: es lo que detiene uno
+  // insistente («cada 3 horas hasta que lo marque»). Sin fecha sigue siendo
+  // solo un aviso y conserva su campana.
+  const completable = entry.type === 'task' || (entry.type === 'reminder' && due !== null);
+
   return (
     <Animated.View entering={FadeInDown.duration(motion.rowEnter)}>
       <Pressable
@@ -71,7 +76,7 @@ export function EntryRow({
               {selected ? <Icon name="check" size={12} color={color.bg} /> : null}
             </View>
           </View>
-        ) : entry.type === 'task' ? (
+        ) : completable ? (
           <Checkbox
             checked={entry.completed}
             onToggle={onToggle}
@@ -89,7 +94,7 @@ export function EntryRow({
         )}
 
         <View style={styles.textCol}>
-          <StrikeText struck={entry.type === 'task' && entry.completed}>
+          <StrikeText struck={completable && entry.completed}>
             {entry.title}
           </StrikeText>
 

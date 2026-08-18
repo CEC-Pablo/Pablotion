@@ -73,13 +73,20 @@ export function FrequencySelector({
             ) : null}
 
             {selected && frequency === 'custom' ? (
-              <CustomStepper
-                interval={value.customInterval}
-                unit={value.customUnit}
-                onChange={(customInterval, customUnit) =>
-                  patch({ customInterval, customUnit })
-                }
-              />
+              <>
+                <CustomStepper
+                  interval={value.customInterval}
+                  unit={value.customUnit}
+                  onChange={(customInterval, customUnit) =>
+                    patch({ customInterval, customUnit })
+                  }
+                />
+                <Text style={styles.hint}>
+                  {value.customUnit === 'hours'
+                    ? 'Te avisará cada pocas horas hasta que lo marques como hecho.'
+                    : 'Toca «días» para cambiar a horas y que insista el mismo día.'}
+                </Text>
+              </>
             ) : null}
           </View>
         );
@@ -223,7 +230,7 @@ function CustomStepper({
         accessibilityLabel="Cambiar unidad"
         style={styles.unitToggle}
       >
-        <Text style={[typography.secondary, { color: color.neutral[400] }]}>
+        <Text style={[typography.secondary, { color: color.accent }]}>
           {unit === 'days' ? 'días' : 'horas'}
         </Text>
       </Touchable>
@@ -288,9 +295,16 @@ const styles = StyleSheet.create({
   },
   unitToggle: {
     borderWidth: 1,
-    borderColor: color.divider,
+    borderColor: color.accent,
     borderRadius: radius.md,
     paddingHorizontal: 10,
+  },
+  hint: {
+    ...typography.meta,
+    fontSize: 12,
+    color: color.neutral[600],
+    paddingLeft: INDENT,
+    paddingBottom: 10,
   },
   separator: {
     marginTop: 14,

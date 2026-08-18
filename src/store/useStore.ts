@@ -82,6 +82,11 @@ interface Store {
   /** Asigna (o quita, con null) la misma etiqueta a varias entradas. */
   assignTag: (ids: string[], tagId: string | null) => Promise<void>;
   toggleTask: (id: string) => Promise<void>;
+  /**
+   * Marca hecho o pendiente cualquier entrada, no solo tareas: es lo que
+   * detiene un recordatorio insistente.
+   */
+  setCompleted: (id: string, completed: boolean) => Promise<void>;
   toggleSubtask: (entryId: string, subtaskId: string) => Promise<void>;
 
   saveReminder: (entryId: string, config: ReminderConfig) => Promise<void>;
@@ -185,8 +190,10 @@ export const useStore = create<Store>((set, get) => ({
   toggleTask: async (id) => {
     const entry = get().entries.find((e) => e.id === id);
     if (!entry) return;
+    await get().setCompleted(id, !entry.completed);
+  },
 
-    const completed = !entry.completed;
+  setCompleted: async (id, completed) => {
     await db.updateEntry(id, { completed });
     set({
       entries: get().entries.map((e) => (e.id === id ? { ...e, completed } : e)),
