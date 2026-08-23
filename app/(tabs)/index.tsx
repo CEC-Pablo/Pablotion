@@ -99,7 +99,21 @@ export default function QuickCapture() {
     void finishRefresh();
   }, [spin, pullHeight, finishRefresh]);
 
+  /**
+   * El scroll del ScrollView, como gesto declarado.
+   *
+   * Sin esto el Pan del pull competía con el scroll nativo, ganaba, y la lista
+   * no se desplazaba en absoluto. Declararlos simultáneos deja que convivan:
+   * el Pan solo hace algo cuando ya estamos arriba del todo.
+   */
+  const nativeScroll = Gesture.Native();
+
   const panGesture = Gesture.Pan()
+    // Solo se activa tras 12 px de arrastre hacia abajo, para no robarle al
+    // scroll los movimientos cortos.
+    .activeOffsetY(12)
+    .failOffsetY(-12)
+    .simultaneousWithExternalGesture(nativeScroll)
     .onUpdate((event) => {
       // Solo desde arriba del todo y solo hacia abajo.
       if (scrollY.value > 0 || event.translationY <= 0) return;
@@ -220,6 +234,7 @@ export default function QuickCapture() {
             </Animated.View>
           </Animated.View>
 
+          <GestureDetector gesture={nativeScroll}>
           <ScrollView
             onScroll={(e) => {
               scrollY.value = e.nativeEvent.contentOffset.y;
@@ -262,6 +277,7 @@ export default function QuickCapture() {
               ))
             )}
           </ScrollView>
+          </GestureDetector>
         </View>
       </GestureDetector>
 

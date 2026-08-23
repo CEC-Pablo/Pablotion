@@ -41,11 +41,37 @@ export default function TagManager() {
   const counts = useStore((s) => s.counts);
   const updateTag = useStore((s) => s.updateTag);
   const removeTag = useStore((s) => s.removeTag);
+  const addTag = useStore((s) => s.addTag);
   const toast = useStore((s) => s.toast);
   const showToast = useStore((s) => s.showToast);
   const hideToast = useStore((s) => s.hideToast);
 
   const full = tags.length >= 6;
+
+  /**
+   * Crear una etiqueta no abre ningún diálogo: nace con el primer color libre
+   * de la paleta y entra directamente en modo renombrar, con el teclado ya
+   * puesto. Mismo criterio que el resto de la app — no hay botón «Guardar».
+   */
+  const handleCreate = async () => {
+    if (full) {
+      showToast(toastText.tagLimit);
+      return;
+    }
+
+    const used = new Set(tags.map((t) => t.color));
+    const color = TAG_PALETTE.find((c) => !used.has(c)) ?? TAG_PALETTE[0];
+
+    const created = await addTag('Nueva etiqueta', color);
+    if (!created) {
+      showToast(toastText.tagLimit);
+      return;
+    }
+
+    setOpenId(created.id);
+    setDraftName('');
+    setRenamingId(created.id);
+  };
 
   const commitRename = async (tag: Tag) => {
     const name = draftName.trim();
@@ -143,8 +169,9 @@ export default function TagManager() {
         })}
 
         <Pressable
-          onPress={() => full && showToast(toastText.tagLimit)}
+          onPress={() => void handleCreate()}
           accessibilityRole="button"
+          accessibilityLabel={full ? 'Límite de etiquetas alcanzado' : 'Nueva etiqueta'}
           style={styles.newTag}
         >
           <Icon name="plus" size={16} color={color.neutral[700]} />

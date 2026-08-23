@@ -94,7 +94,8 @@ interface Store {
 
   updateTag: (id: string, patch: { name?: string; color?: string }) => Promise<void>;
   removeTag: (id: string) => Promise<void>;
-  addTag: (name: string, color: string) => Promise<boolean>;
+  /** Devuelve la etiqueta creada, o `null` si ya hay seis. */
+  addTag: (name: string, color: string) => Promise<Tag | null>;
 
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => Promise<void>;
   showToast: (message: string) => void;
@@ -297,9 +298,10 @@ export const useStore = create<Store>((set, get) => ({
 
   addTag: async (name, color) => {
     const tag = await db.createTag(name, color);
-    if (!tag) return false;
+    if (!tag) return null;
     set({ tags: [...get().tags, tag] });
-    return true;
+    await get().refresh();
+    return tag;
   },
 
   setSetting: async (key, value) => {
