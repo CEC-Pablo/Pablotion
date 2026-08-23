@@ -104,3 +104,38 @@ export async function deleteEvent(eventId: string): Promise<void> {
     // Ya no estaba: no hay nada que hacer.
   }
 }
+
+export interface PhoneEvent {
+  id: string;
+  title: string;
+  startsAt: Date;
+  allDay: boolean;
+}
+
+/**
+ * Los eventos que ya hay en el calendario del teléfono para un rango.
+ *
+ * Es solo lectura y tolerante a fallos: sin permiso devuelve una lista vacía
+ * en vez de lanzar, para que la pantalla de calendario siga funcionando con
+ * las entradas propias aunque el usuario nunca haya dado acceso.
+ */
+export async function listPhoneEvents(from: Date, to: Date): Promise<PhoneEvent[]> {
+  try {
+    const permission = await Calendar.getCalendarPermissions();
+    if (!permission.granted) return [];
+
+    const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
+    if (calendars.length === 0) return [];
+
+    const events = await Calendar.listEvents(calendars, from, to);
+
+    return events.map((event) => ({
+      id: event.id,
+      title: event.title ?? 'Sin título',
+      startsAt: new Date(event.startDate as string | number | Date),
+      allDay: Boolean(event.allDay),
+    }));
+  } catch {
+    return [];
+  }
+}

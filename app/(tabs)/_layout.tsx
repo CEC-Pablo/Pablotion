@@ -46,6 +46,10 @@ export default function TabsLayout() {
         options={{ title: 'Tareas', tabBarIcon: tabIcon('check-square-offset') }}
       />
       <Tabs.Screen
+        name="calendar"
+        options={{ title: 'Calendario', tabBarIcon: tabIcon('calendar-blank') }}
+      />
+      <Tabs.Screen
         name="search"
         options={{ title: 'Buscar', tabBarIcon: tabIcon('magnifying-glass') }}
       />
