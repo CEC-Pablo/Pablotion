@@ -82,6 +82,19 @@ interface Store {
     title: string;
     tag_id?: string | null;
   }) => Promise<Entry>;
+  /**
+   * Crea una entrada ya fechada, desde la pestaña Calendario.
+   *
+   * Notas y tareas quedan simplemente con fecha; los recordatorios además
+   * estrenan su regla `once`, que es lo que hace que suene el teléfono.
+   */
+  addEntryOnDate: (input: {
+    type: EntryType;
+    title: string;
+    dueAt: Date;
+    tagId?: string | null;
+    syncToCalendar?: boolean;
+  }) => Promise<Entry>;
   patchEntry: (
     id: string,
     patch: Partial<Pick<Entry, 'type' | 'title' | 'body' | 'tag_id' | 'priority'>>
@@ -160,6 +173,31 @@ export const useStore = create<Store>((set, get) => ({
   addEntry: async ({ type, title, tag_id }) => {
     const entry = await db.createEntry({ type, title, tag_id: tag_id ?? null });
     set({ entries: [entry, ...get().entries] });
+    return entry;
+  },
+
+  addEntryOnDate: async ({ type, title, dueAt, tagId, syncToCalendar }) => {
+    const entry = await db.createEntry({
+      type,
+      title,
+      tag_id: tagId ?? null,
+      due_at: dueAt.toISOString(),
+    });
+
+    if (type === 'reminder' || type === 'task') {
+      await get().saveReminder(entry.id, {
+        dueAt,
+        frequency: 'once',
+        weeklyDay: null,
+        customInterval: null,
+        customUnit: null,
+        relativeOffsetMinutes: null,
+        syncToCalendar: syncToCalendar ?? false,
+      });
+    } else {
+      await get().refresh();
+    }
+
     return entry;
   },
 

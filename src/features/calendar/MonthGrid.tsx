@@ -41,6 +41,7 @@ export function MonthGrid({
   marksFor,
   onSelect,
   onMonthChange,
+  onOpenPicker,
   today = new Date(),
 }: {
   month: Date;
@@ -48,6 +49,8 @@ export function MonthGrid({
   marksFor: (day: Date) => DayMarks;
   onSelect: (day: Date) => void;
   onMonthChange: (month: Date) => void;
+  /** Tocar el rótulo abre el selector de mes y año. */
+  onOpenPicker: () => void;
   today?: Date;
 }) {
   const days = useMemo(() => {
@@ -66,7 +69,17 @@ export function MonthGrid({
           <Icon name="caret-left" size={16} color={color.neutral[400]} />
         </Touchable>
 
-        <Text style={styles.monthLabel}>{formatMonthYear(month)}</Text>
+        {/* El rótulo es un botón: doce toques de flecha para llegar a marzo
+            del año que viene no es navegar, es resignarse. */}
+        <Pressable
+          onPress={onOpenPicker}
+          accessibilityRole="button"
+          accessibilityLabel={`Elegir mes y año. Ahora: ${formatMonthYear(month)}`}
+          style={({ pressed }) => [styles.monthButton, { opacity: pressed ? 0.72 : 1 }]}
+        >
+          <Text style={styles.monthLabel}>{formatMonthYear(month)}</Text>
+          <Icon name="caret-down" size={13} color={color.accent} />
+        </Pressable>
 
         <Touchable
           size={34}
@@ -160,6 +173,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  monthButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: layout.minTouch,
+    paddingHorizontal: 10,
+    borderRadius: radius.md,
   },
   monthLabel: {
     ...typography.body,

@@ -13,9 +13,12 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon, TYPE_ICON } from '../../src/components/Icon';
+import { Toast } from '../../src/components/Toast';
 import { FadingRule, Kicker, TagDot } from '../../src/components/primitives';
+import { DayComposer } from '../../src/features/calendar/DayComposer';
 import { MonthGrid, type DayMarks } from '../../src/features/calendar/MonthGrid';
-import { thingCount } from '../../src/i18n';
+import { MonthYearPicker } from '../../src/features/calendar/MonthYearPicker';
+import { thingCount, toast as toastText } from '../../src/i18n';
 import { listPhoneEvents, type PhoneEvent } from '../../src/lib/calendar';
 import {
   formatDayMonth,
@@ -34,11 +37,18 @@ export default function CalendarScreen() {
   const router = useRouter();
   const entries = useStore((s) => s.entries);
   const tags = useStore((s) => s.tags);
+  const detect = useStore((s) => s.settings.detect);
+  const addEntryOnDate = useStore((s) => s.addEntryOnDate);
+  const toast = useStore((s) => s.toast);
+  const showToast = useStore((s) => s.showToast);
+  const hideToast = useStore((s) => s.hideToast);
 
   const today = useMemo(() => new Date(), []);
   const [month, setMonth] = useState(() => startOfMonth(today));
   const [selected, setSelected] = useState(today);
   const [phoneEvents, setPhoneEvents] = useState<PhoneEvent[]>([]);
+  const [pickingMonth, setPickingMonth] = useState(false);
+  const [composing, setComposing] = useState(false);
 
   const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
 
@@ -102,14 +112,28 @@ export default function CalendarScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
-        <MonthGrid
-          month={month}
-          selected={selected}
-          today={today}
-          marksFor={marksFor}
-          onSelect={setSelected}
-          onMonthChange={setMonth}
-        />
+        {pickingMonth ? (
+          <View style={styles.pickerCard}>
+            <MonthYearPicker
+              month={month}
+              today={today}
+              onSelect={(next) => {
+                setMonth(next);
+                setPickingMonth(false);
+              }}
+            />
+          </View>
+        ) : (
+          <MonthGrid
+            month={month}
+            selected={selected}
+            today={today}
+            marksFor={marksFor}
+            onSelect={setSelected}
+            onMonthChange={setMonth}
+            onOpenPicker={() => setPickingMonth(true)}
+          />
+        )}
 
         <View style={styles.section}>
           <View style={styles.sectionHead}>
@@ -120,9 +144,43 @@ export default function CalendarScreen() {
             </Text>
           </View>
 
-          {dayEntries.length === 0 && dayEvents.length === 0 ? (
+          {dayEntries.length === 0 && dayEvents.length === 0 && !composing ? (
             <Text style={styles.empty}>Nada para este día.</Text>
           ) : null}
+
+          {composing ? (
+            <DayComposer
+              day={selected}
+              tags={tags}
+              detectionEnabled={detect}
+              onCancel={() => setComposing(false)}
+              onSubmit={async (input) => {
+                await addEntryOnDate({
+                  type: input.type,
+                  title: input.title,
+                  dueAt: input.dueAt,
+                  tagId: input.tagId,
+                });
+                setComposing(false);
+                showToast(toastText.saved(input.type));
+              }}
+            />
+          ) : (
+            <Pressable
+              onPress={() => setComposing(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Añadir en este día"
+              style={({ pressed }) => [
+                styles.addRow,
+                { opacity: pressed ? 0.72 : 1 },
+              ]}
+            >
+              <Icon name="plus" size={15} color={color.accent} />
+              <Text style={[typography.secondary, { color: color.accent }]}>
+                Añadir en este día
+              </Text>
+            </Pressable>
+          )}
 
           {dayEntries.map((entry) => (
             <DatedRow
@@ -170,6 +228,8 @@ export default function CalendarScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+      <Toast message={toast} onDismiss={hideToast} />
     </SafeAreaView>
   );
 }
@@ -254,6 +314,26 @@ const styles = StyleSheet.create({
   section: {
     marginTop: layout.sectionMarginTop,
     gap: layout.rowGap,
+  },
+  pickerCard: {
+    backgroundColor: color.surface,
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: color.neutral[800],
+  },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: layout.minTouch,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: color.accentRamp[700],
+    borderRadius: radius.md,
+    marginTop: 2,
   },
   sectionHead: {
     flexDirection: 'row',

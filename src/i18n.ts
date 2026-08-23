@@ -41,6 +41,22 @@ export const FREQUENCY_LABEL: Record<Frequency, string> = {
 /** Iniciales de la fila de días. Índice 0 = lunes, como el diseño. */
 export const WEEKDAY_INITIALS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'] as const;
 
+/** Meses en minúscula, como los formatea date-fns con locale `es`. */
+export const MONTH_NAMES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+] as const;
+
 /** Nombre completo, índice 0 = lunes. */
 export const WEEKDAY_NAMES = [
   'lunes',
