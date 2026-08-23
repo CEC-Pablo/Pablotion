@@ -25,16 +25,12 @@ import { FadingRule, Kicker, Touchable } from '../../src/components/primitives';
 import { CaptureCard } from '../../src/features/capture/CaptureCard';
 import { EmptyState } from '../../src/features/capture/EmptyState';
 import { EntryRow } from '../../src/features/capture/EntryRow';
+import { groupForHome, reorderableSiblings } from '../../src/features/capture/ordering';
 import { loadSampleData } from '../../src/features/capture/sample';
+import { TagSection } from '../../src/features/capture/TagSection';
 import { SelectionBar } from '../../src/features/capture/SelectionBar';
-import {
-  TYPE_CYCLE,
-  TYPE_LABEL_PLURAL,
-  greeting,
-  thingCount,
-  toast as toastText,
-} from '../../src/i18n';
-import { DAY_GROUP_LABEL, dayGroup, headerDate, type DayGroup } from '../../src/lib/dates';
+import { greeting, thingCount, toast as toastText } from '../../src/i18n';
+import { DAY_GROUP_LABEL, headerDate } from '../../src/lib/dates';
 import { useStore } from '../../src/store/useStore';
 import { color, layout, motion, pull, type as typography } from '../../src/theme/tokens';
 import type { Entry, EntryType } from '../../src/types';
@@ -61,6 +57,8 @@ export default function QuickCapture() {
   const entries = useStore((s) => s.entries);
   const tags = useStore((s) => s.tags);
   const detect = useStore((s) => s.settings.detect);
+  const groupByTag = useStore((s) => s.settings.groupByTag);
+  const moveEntry = useStore((s) => s.moveEntry);
   const addEntry = useStore((s) => s.addEntry);
   const toggleTask = useStore((s) => s.toggleTask);
   const removeEntries = useStore((s) => s.removeEntries);
@@ -195,7 +193,16 @@ export default function QuickCapture() {
 
   /* ----------------------------------------------------------------- lista */
 
-  const groups = useMemo(() => groupByDayAndType(entries), [entries]);
+  const groups = useMemo(
+    () => groupForHome(entries, tags, groupByTag),
+    [entries, tags, groupByTag]
+  );
+
+  /** El asa solo se pinta si la entrada tiene con quién intercambiarse. */
+  const canDrag = (entryId: string) => {
+    const entry = entries.find((e) => e.id === entryId);
+    return entry ? reorderableSiblings(entries, entry).length > 1 : false;
+  };
   const isEmpty = entries.length === 0;
 
   return (
@@ -250,28 +257,44 @@ export default function QuickCapture() {
                 <View key={section.day} style={styles.group}>
                   <Text style={styles.dayLabel}>{DAY_GROUP_LABEL[section.day]}</Text>
 
-                  {section.types.map(({ type, items }) => (
-                    <View key={type} style={styles.typeGroup}>
-                      <View style={styles.groupHeader}>
-                        <Kicker>{TYPE_LABEL_PLURAL[type]}</Kicker>
-                        <FadingRule oneSided style={styles.groupRule} />
-                        <Text style={styles.count}>{thingCount(items.length)}</Text>
-                      </View>
+                  {/* Lo que no tiene etiqueta va suelto y arriba, ordenado por
+                      prioridad. Es lo que se ve sin tocar nada. */}
+                  <View style={styles.loose}>
+                    {section.loose.map((entry) => (
+                      <EntryRow
+                        key={entry.id}
+                        entry={entry}
+                        tag={undefined}
+                        entering={entry.id === enteringId}
+                        selectionMode={selectionMode}
+                        selected={selected.includes(entry.id)}
+                        draggable={canDrag(entry.id)}
+                        onPress={() => handleRowPress(entry.id)}
+                        onLongPress={() => toggleSelected(entry.id)}
+                        onToggle={() => void toggleTask(entry.id)}
+                        onMove={(steps) => void moveEntry(entry.id, steps)}
+                      />
+                    ))}
+                  </View>
 
+                  {section.tagged.map(({ tag, items }) => (
+                    <TagSection key={tag.id} tag={tag} count={items.length}>
                       {items.map((entry) => (
                         <EntryRow
                           key={entry.id}
                           entry={entry}
-                          tag={entry.tag_id ? tagById.get(entry.tag_id) : undefined}
+                          tag={tagById.get(tag.id)}
                           entering={entry.id === enteringId}
                           selectionMode={selectionMode}
                           selected={selected.includes(entry.id)}
+                          draggable={canDrag(entry.id)}
                           onPress={() => handleRowPress(entry.id)}
                           onLongPress={() => toggleSelected(entry.id)}
                           onToggle={() => void toggleTask(entry.id)}
+                          onMove={(steps) => void moveEntry(entry.id, steps)}
                         />
                       ))}
-                    </View>
+                    </TagSection>
                   ))}
                 </View>
               ))
@@ -294,42 +317,6 @@ export default function QuickCapture() {
       )}
     </SafeAreaView>
   );
-}
-
-interface DaySection {
-  day: DayGroup;
-  /** Solo los tipos que tienen algo ese día; nunca un subgrupo vacío. */
-  types: { type: EntryType; items: Entry[] }[];
-}
-
-/**
- * Los grupos salen de `created_at`, nunca de una cadena fija. El día es el eje
- * principal (Hoy → Ayer → Antes) y dentro de cada uno se subdivide por tipo,
- * para que las notas no se mezclen con las tareas y los recordatorios.
- */
-function groupByDayAndType(entries: Entry[]): DaySection[] {
-  const dayOrder: DayGroup[] = ['today', 'yesterday', 'older'];
-  const byDay = new Map<DayGroup, Entry[]>();
-
-  for (const entry of entries) {
-    const day = dayGroup(new Date(entry.created_at));
-    const list = byDay.get(day) ?? [];
-    list.push(entry);
-    byDay.set(day, list);
-  }
-
-  return dayOrder
-    .filter((day) => byDay.has(day))
-    .map((day) => {
-      const dayEntries = byDay.get(day)!;
-      return {
-        day,
-        types: TYPE_CYCLE.map((type) => ({
-          type,
-          items: dayEntries.filter((e) => e.type === type),
-        })).filter((section) => section.items.length > 0),
-      };
-    });
 }
 
 const styles = StyleSheet.create({
@@ -370,9 +357,9 @@ const styles = StyleSheet.create({
     color: color.neutral[500],
     marginBottom: 4,
   },
-  typeGroup: {
-    marginTop: 12,
+  loose: {
     gap: layout.rowGap,
+    marginTop: 8,
   },
   groupHeader: {
     flexDirection: 'row',

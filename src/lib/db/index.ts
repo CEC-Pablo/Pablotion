@@ -9,7 +9,7 @@ import * as SQLite from 'expo-sqlite';
 import { TAG_PALETTE } from '../../theme/tokens';
 
 const DATABASE_NAME = 'trazo.db';
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 /** Las seis etiquetas sembradas al instalar. Seis en total, no seis por nota. */
 const SEED_TAGS: { name: string; color: string }[] = [
@@ -145,6 +145,19 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     }
     version = 2;
     await db.execAsync('PRAGMA user_version = 2');
+  }
+
+  if (version === 2) {
+    // Orden manual dentro de su grupo (misma etiqueta, misma prioridad).
+    // Arranca en 0 para todas: el desempate sigue siendo `created_at` hasta
+    // que el usuario arrastre algo por primera vez.
+    if (!(await hasColumn(db, 'entries', 'position'))) {
+      await db.execAsync(
+        'ALTER TABLE entries ADD COLUMN position INTEGER NOT NULL DEFAULT 0'
+      );
+    }
+    version = 3;
+    await db.execAsync('PRAGMA user_version = 3');
   }
 }
 

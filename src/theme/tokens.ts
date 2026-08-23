@@ -40,16 +40,35 @@ export const color = {
 } as const;
 
 /**
- * Las seis etiquetas. Paleta mono a propósito: la distinción es de valor,
- * no de matiz. No sustituir por seis colores saturados.
+ * Paleta de etiquetas, ampliada.
+ *
+ * Los seis primeros son los tonales originales de Nocturne, así que las
+ * etiquetas ya existentes conservan su color exacto. Los diez siguientes
+ * abren la gama a otras familias — azul, verde, ámbar, rosa — pero **con la
+ * misma saturación baja**: la regla del sistema es que fuera del acento el
+ * color no grita, y seis colores chillones convertirían la lista en un
+ * semáforo. Todos rondan la luminosidad de la rampa neutral para que ninguno
+ * pese más que otro sobre el fondo oscuro.
  */
 export const TAG_PALETTE = [
+  // Los seis originales.
   '#b5abfc',
   '#968ae0',
   '#9690c9',
   '#9397ab',
   '#7972a9',
   '#b2b6ca',
+  // Ampliación, misma familia de saturación.
+  '#8fa8d8',
+  '#7d9bbf',
+  '#8fbfb5',
+  '#7aab9c',
+  '#a8bf8f',
+  '#c4b98a',
+  '#d1a98a',
+  '#c99a9a',
+  '#c78fa8',
+  '#a88fbf',
 ] as const;
 
 /** Prioridad de tarea: color, nunca texto. Punto de 7px con borde de 1.5px. */

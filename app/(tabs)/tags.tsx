@@ -21,6 +21,7 @@ import { Icon } from '../../src/components/Icon';
 import { Kicker, TagDot, Touchable } from '../../src/components/primitives';
 import { Toast } from '../../src/components/Toast';
 import { noteCount, toast as toastText } from '../../src/i18n';
+import { MAX_TAGS } from '../../src/lib/db/queries';
 import { useStore } from '../../src/store/useStore';
 import {
   TAG_PALETTE,
@@ -46,7 +47,7 @@ export default function TagManager() {
   const showToast = useStore((s) => s.showToast);
   const hideToast = useStore((s) => s.hideToast);
 
-  const full = tags.length >= 6;
+  const full = tags.length >= MAX_TAGS;
 
   /**
    * Crear una etiqueta no abre ningún diálogo: nace con el primer color libre
@@ -84,7 +85,7 @@ export default function TagManager() {
       <View style={styles.header}>
         <Text style={styles.title}>Etiquetas</Text>
         <Text style={styles.subtitle}>
-          Seis como máximo. Menos etiquetas, menos decisiones cada vez que anotas algo.
+          Hasta ocho. Menos etiquetas, menos decisiones cada vez que anotas algo.
         </Text>
       </View>
 
@@ -181,7 +182,7 @@ export default function TagManager() {
               { color: full ? color.neutral[700] : color.neutral[500] },
             ]}
           >
-            {full ? 'Ya tienes seis. Elimina una para crear otra.' : 'Nueva etiqueta'}
+            {full ? `Ya tienes ${MAX_TAGS}. Elimina una para crear otra.` : 'Nueva etiqueta'}
           </Text>
         </Pressable>
       </ScrollView>

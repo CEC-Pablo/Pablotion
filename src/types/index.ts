@@ -33,6 +33,11 @@ export interface Entry {
    * sincronizó. `null` mientras el interruptor esté apagado.
    */
   calendar_event_id: string | null;
+  /**
+   * Orden manual dentro de su grupo (misma etiqueta, misma prioridad).
+   * Menor va antes. Empata por `created_at` mientras nadie haya arrastrado.
+   */
+  position: number;
 }
 
 export interface Subtask {

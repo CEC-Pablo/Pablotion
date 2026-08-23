@@ -3,7 +3,7 @@
  * (§ conflicto 3 del handoff unificado); todo literal visible sale de aquí.
  */
 
-import type { EntryType, Frequency } from './types';
+import type { EntryType, Frequency, Priority } from './types';
 
 export const TYPE_LABEL: Record<EntryType, string> = {
   note: 'Nota',
@@ -20,6 +20,16 @@ export const TYPE_LABEL_PLURAL: Record<EntryType, string> = {
   task: 'Tareas',
   reminder: 'Recordatorios',
 };
+
+/** La prioridad decide el orden de la lista de Inicio. */
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  high: 'Urgente',
+  medium: 'Normal',
+  low: 'Puede esperar',
+};
+
+/** De más urgente a menos, que es el orden en que se ofrecen. */
+export const PRIORITY_CYCLE: Priority[] = ['high', 'medium', 'low'];
 
 export const FREQUENCY_LABEL: Record<Frequency, string> = {
   once: 'Una sola vez',
@@ -57,7 +67,7 @@ export const toast = {
   deleted: 'Eliminado',
   renaming: (name: string) => `Renombrar «${name}»`,
   tagsKeepText: 'Las notas conservan su texto',
-  tagLimit: 'Seis es el límite, a propósito',
+  tagLimit: 'Ocho es el límite, a propósito',
   upToDate: 'Todo al día',
   notificationsDenied: 'Sin permiso de notificaciones. Actívalo en Ajustes del sistema.',
 };

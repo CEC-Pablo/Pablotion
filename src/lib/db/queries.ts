@@ -29,6 +29,7 @@ interface EntryRow {
   completed: number;
   priority: Priority | null;
   calendar_event_id: string | null;
+  position: number;
 }
 
 interface SubtaskRow {
@@ -135,6 +136,7 @@ export async function createEntry(input: {
     priority: input.priority ?? null,
     subtasks: [],
     calendar_event_id: null,
+    position: 0,
   };
 }
 
@@ -149,6 +151,7 @@ type EntryPatch = Partial<
     | 'completed'
     | 'priority'
     | 'calendar_event_id'
+    | 'position'
   >
 >;
 
@@ -217,6 +220,12 @@ export async function deleteSubtask(subtaskId: string): Promise<void> {
 
 /* ------------------------------------------------------------------- tags */
 
+/**
+ * Tope de etiquetas. El brief lo ponía en seis para que anotar no obligue a
+ * elegir entre veinte; ocho conserva ese espíritu con algo más de margen.
+ */
+export const MAX_TAGS = 8;
+
 export async function listTags(): Promise<Tag[]> {
   const db = await getDb();
   return db.getAllAsync<Tag>('SELECT id, name, color FROM tags ORDER BY position ASC');
@@ -255,8 +264,7 @@ export async function deleteTag(tagId: string): Promise<void> {
 export async function createTag(name: string, color: string): Promise<Tag | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM tags');
-  // Seis es el límite, a propósito.
-  if ((row?.n ?? 0) >= 6) return null;
+  if ((row?.n ?? 0) >= MAX_TAGS) return null;
 
   const tag: Tag = { id: id(), name, color };
   await db.runAsync('INSERT INTO tags (id, name, color, position) VALUES (?, ?, ?, ?)', [

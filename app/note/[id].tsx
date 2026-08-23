@@ -12,9 +12,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../src/components/Button';
 import { Icon, TYPE_ICON } from '../../src/components/Icon';
-import { FadingRule, TagDot, Touchable } from '../../src/components/primitives';
+import {
+  FadingRule,
+  PriorityDot,
+  TagDot,
+  Touchable,
+} from '../../src/components/primitives';
 import { Toast } from '../../src/components/Toast';
-import { toast as toastText } from '../../src/i18n';
+import { PRIORITY_CYCLE, PRIORITY_LABEL, toast as toastText } from '../../src/i18n';
 import { formatCreated, formatShortDue } from '../../src/lib/dates';
 import { useStore } from '../../src/store/useStore';
 import {
@@ -43,6 +48,7 @@ export default function NoteEditor() {
   const [title, setTitle] = useState(entry?.title ?? '');
   const [body, setBody] = useState(entry?.body ?? '');
   const [pickingTag, setPickingTag] = useState(false);
+  const [pickingPriority, setPickingPriority] = useState(false);
   const dirty = useRef(false);
 
   const tag = useMemo(
@@ -172,6 +178,62 @@ export default function NoteEditor() {
                     ]}
                   >
                     {option.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+
+        {/* La prioridad ordena la lista de Inicio: lo urgente sube. */}
+        <Pressable
+          onPress={() => setPickingPriority(!pickingPriority)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: pickingPriority }}
+          style={styles.metaRow}
+        >
+          <Icon name="arrow-up" size={17} color={color.neutral[500]} />
+          <Text style={styles.metaLabel}>Prioridad</Text>
+          {entry.priority ? (
+            <View style={styles.tagChip}>
+              <PriorityDot priority={entry.priority} />
+              <Text style={styles.metaValue}>{PRIORITY_LABEL[entry.priority]}</Text>
+            </View>
+          ) : (
+            <Text style={[styles.metaValue, { color: color.neutral[600] }]}>Sin prioridad</Text>
+          )}
+          <Icon name="caret-down" size={14} color={color.neutral[600]} />
+        </Pressable>
+
+        {pickingPriority ? (
+          <View style={styles.tagPicker}>
+            {PRIORITY_CYCLE.map((option) => {
+              const active = option === entry.priority;
+              return (
+                <Pressable
+                  key={option}
+                  // Volver a tocar la activa la quita, igual que en etiquetas.
+                  onPress={() => {
+                    void patchEntry(id, { priority: active ? null : option });
+                    setPickingPriority(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={PRIORITY_LABEL[option]}
+                  style={({ pressed }) => [
+                    styles.tagOption,
+                    active && { borderColor: color.accent },
+                    { opacity: pressed ? 0.72 : 1 },
+                  ]}
+                >
+                  <PriorityDot priority={option} />
+                  <Text
+                    style={[
+                      styles.metaValue,
+                      { color: active ? color.accent : color.neutral[400] },
+                    ]}
+                  >
+                    {PRIORITY_LABEL[option]}
                   </Text>
                 </Pressable>
               );

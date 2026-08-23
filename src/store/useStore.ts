@@ -9,6 +9,10 @@
 
 import { create } from 'zustand';
 
+import {
+  positionsAfterMove,
+  reorderableSiblings,
+} from '../features/capture/ordering';
 import * as calendar from '../lib/calendar';
 import * as db from '../lib/db/queries';
 import { cancelForEntry, reconcileAll } from '../lib/notifications';
@@ -31,6 +35,11 @@ export interface Settings {
   theme: 'dark' | 'system';
   /** Los tres pasos de bienvenida solo se ven una vez. */
   onboarded: boolean;
+  /**
+   * En Inicio, las entradas con etiqueta se apartan a una sección plegable
+   * por etiqueta en vez de mezclarse con el resto.
+   */
+  groupByTag: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -40,6 +49,7 @@ const DEFAULT_SETTINGS: Settings = {
   dnd: false,
   theme: 'dark',
   onboarded: false,
+  groupByTag: true,
 };
 
 /** Lo que el ReminderCreator devuelve al pulsar «Listo». */
@@ -88,6 +98,11 @@ interface Store {
    */
   setCompleted: (id: string, completed: boolean) => Promise<void>;
   toggleSubtask: (entryId: string, subtaskId: string) => Promise<void>;
+  /**
+   * Mueve una entrada `steps` posiciones dentro de sus vecinos — mismo día,
+   * misma etiqueta, misma prioridad. Arrastrar nunca la saca de su grupo.
+   */
+  moveEntry: (entryId: string, steps: number) => Promise<void>;
 
   saveReminder: (entryId: string, config: ReminderConfig) => Promise<void>;
   clearReminder: (entryId: string) => Promise<void>;
@@ -120,6 +135,7 @@ export const useStore = create<Store>((set, get) => ({
       dnd: raw.dnd ? raw.dnd === '1' : DEFAULT_SETTINGS.dnd,
       theme: raw.theme === 'system' ? 'system' : 'dark',
       onboarded: raw.onboarded === '1',
+      groupByTag: raw.groupByTag ? raw.groupByTag === '1' : DEFAULT_SETTINGS.groupByTag,
     };
     set({ settings });
     await get().refresh();
@@ -230,6 +246,32 @@ export const useStore = create<Store>((set, get) => ({
                 s.id === subtaskId ? { ...s, completed } : s
               ),
             }
+      ),
+    });
+  },
+
+  moveEntry: async (entryId, steps) => {
+    if (steps === 0) return;
+
+    const entries = get().entries;
+    const entry = entries.find((e) => e.id === entryId);
+    if (!entry) return;
+
+    const siblings = reorderableSiblings(entries, entry);
+    const from = siblings.findIndex((e) => e.id === entryId);
+    const to = Math.min(siblings.length - 1, Math.max(0, from + steps));
+
+    const updates = positionsAfterMove(siblings, from, to);
+    if (updates.length === 0) return;
+
+    for (const update of updates) {
+      await db.updateEntry(update.id, { position: update.position });
+    }
+
+    const byId = new Map(updates.map((u) => [u.id, u.position]));
+    set({
+      entries: entries.map((e) =>
+        byId.has(e.id) ? { ...e, position: byId.get(e.id)! } : e
       ),
     });
   },

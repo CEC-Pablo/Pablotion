@@ -84,6 +84,19 @@ export default function Settings() {
           </Row>
         </Section>
 
+        <Section title="Inicio">
+          <Row
+            label="Agrupar por etiqueta"
+            hint="Lo etiquetado se pliega y no satura la portada"
+          >
+            <Switch
+              value={settings.groupByTag}
+              onChange={(next) => void setSetting('groupByTag', next)}
+              accessibilityLabel="Agrupar por etiqueta"
+            />
+          </Row>
+        </Section>
+
         <Section title="Apariencia">
           <Row label="Tema">
             <View style={styles.segmented}>
