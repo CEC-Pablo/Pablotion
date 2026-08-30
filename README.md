@@ -5,8 +5,8 @@ tres segundos, sin carpetas ni pasos de configuración. Interfaz en español, te
 
 > *"Menos pasos, no menos personalidad."*
 
-Está hecha para el centro de estudiantes de una universidad: gente que anota entre clase
-y clase, con el teléfono en una mano, y que no va a organizar nada después. Por eso no
+Está hecha para estudiantes universitarios generalmente: gente que anota entre clase
+y clase, con el teléfono en mano, y que no va a organizar nada después. Por eso no
 hay carpetas, no hay botón «Guardar» en ninguna pantalla, y escribir «entregar el
 formulario mañana» crea un recordatorio sin que haya que decírselo.
 
