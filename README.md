@@ -167,12 +167,20 @@ la instalación limpia y el reintento.
 También se verifica sin dispositivo que `tsc --noEmit` está limpio, que `expo-doctor`
 pasa sus 21 comprobaciones y que `expo export --platform android` empaqueta el bundle.
 
-**Lo que requiere un teléfono físico y no está cubierto por tests:**
+**Comprobado en dispositivo físico (Android):**
 
-- Que las notificaciones llegan con la app cerrada y en segundo plano.
-- El comportamiento real del pull-to-refresh, del arrastre y de las animaciones.
+- Las notificaciones llegan con la aplicación **cerrada** y en segundo plano, que era el
+  criterio de terminado más duro del proyecto y la razón de todo el diseño del motor de
+  recurrencia.
+- La integración con el calendario del teléfono: los recordatorios marcados se guardan
+  como eventos y los eventos existentes se leen en la pestaña Calendario.
+
+**Lo que sigue sin comprobar de forma sistemática:**
+
+- El comportamiento del pull-to-refresh, del arrastre y de las animaciones bajo uso real.
 - La fidelidad de píxel contra el prototipo de diseño.
-- El permiso de alarmas exactas en Android 12+.
+- El permiso de alarmas exactas en Android 12+ en fabricantes que matan procesos en
+  segundo plano de forma agresiva.
 
 ## Decisiones que se apartan del diseño original
 
