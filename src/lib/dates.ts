@@ -46,6 +46,19 @@ export function formatTime(date: Date): string {
   return format(date, 'H:mm');
 }
 
+/**
+ * Formato con el que un día viaja en la URL de la hoja del calendario.
+ *
+ * Se lee de vuelta con `parse`, nunca con `new Date(cadena)`: esa forma
+ * interpreta "2026-09-02" como medianoche UTC y en Chile eso cae el día
+ * anterior por la tarde.
+ */
+export const DAY_PARAM_FORMAT = 'yyyy-MM-dd';
+
+export function dayParam(date: Date): string {
+  return format(date, DAY_PARAM_FORMAT);
+}
+
 /** "agosto 2026" — la cabecera del calendario compacto. */
 export function formatMonthYear(date: Date): string {
   return format(date, 'MMMM yyyy', { locale: es });

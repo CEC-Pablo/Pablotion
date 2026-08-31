@@ -160,9 +160,18 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="note/[id]" />
+          <Stack.Screen name="prompt/[id]" />
           <Stack.Screen
             name="reminder/[id]"
             options={{ presentation: 'transparentModal', animation: 'slide_from_bottom' }}
+          />
+          {/* La hoja del calendario hereda el fundido del stack y se anima
+              además por dentro: el oscurecido aparece y la tarjeta sube desde
+              abajo. Con `slide_from_bottom` subiría el conjunto entero y se
+              vería el rectángulo oscuro trepando por la pantalla. */}
+          <Stack.Screen
+            name="day/[date]"
+            options={{ presentation: 'transparentModal' }}
           />
           <Stack.Screen name="settings" />
         </Stack>

@@ -42,6 +42,7 @@ export function MonthGrid({
   onSelect,
   onMonthChange,
   onOpenPicker,
+  onAddOnDay,
   today = new Date(),
 }: {
   month: Date;
@@ -51,6 +52,12 @@ export function MonthGrid({
   onMonthChange: (month: Date) => void;
   /** Tocar el rótulo abre el selector de mes y año. */
   onOpenPicker: () => void;
+  /**
+   * Mantener pulsado un día abre directamente el compositor de ese día. Es un
+   * atajo, no la única vía: el botón «Añadir en este día» sigue debajo para
+   * quien no descubra el gesto.
+   */
+  onAddOnDay?: (day: Date) => void;
   today?: Date;
 }) {
   const days = useMemo(() => {
@@ -110,9 +117,13 @@ export function MonthGrid({
             <Pressable
               key={day.toISOString()}
               onPress={() => onSelect(day)}
+              onLongPress={onAddOnDay ? () => onAddOnDay(day) : undefined}
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
               accessibilityLabel={day.getDate().toString()}
+              accessibilityHint={
+                onAddOnDay ? 'Mantén pulsado para añadir algo este día' : undefined
+              }
               style={[
                 styles.cell,
                 isSelected && {

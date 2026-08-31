@@ -15,12 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, TYPE_ICON } from '../../src/components/Icon';
 import { Toast } from '../../src/components/Toast';
 import { FadingRule, Kicker, TagDot } from '../../src/components/primitives';
-import { DayComposer } from '../../src/features/calendar/DayComposer';
 import { MonthGrid, type DayMarks } from '../../src/features/calendar/MonthGrid';
 import { MonthYearPicker } from '../../src/features/calendar/MonthYearPicker';
-import { thingCount, toast as toastText } from '../../src/i18n';
+import { thingCount } from '../../src/i18n';
 import { listPhoneEvents, type PhoneEvent } from '../../src/lib/calendar';
 import {
+  dayParam,
   formatDayMonth,
   formatFullDate,
   formatTime,
@@ -37,10 +37,7 @@ export default function CalendarScreen() {
   const router = useRouter();
   const entries = useStore((s) => s.entries);
   const tags = useStore((s) => s.tags);
-  const detect = useStore((s) => s.settings.detect);
-  const addEntryOnDate = useStore((s) => s.addEntryOnDate);
   const toast = useStore((s) => s.toast);
-  const showToast = useStore((s) => s.showToast);
   const hideToast = useStore((s) => s.hideToast);
 
   const today = useMemo(() => new Date(), []);
@@ -48,7 +45,16 @@ export default function CalendarScreen() {
   const [selected, setSelected] = useState(today);
   const [phoneEvents, setPhoneEvents] = useState<PhoneEvent[]>([]);
   const [pickingMonth, setPickingMonth] = useState(false);
-  const [composing, setComposing] = useState(false);
+
+  /**
+   * Añadir abre una hoja encima (ruta `day/[date]`), no un bloque dentro de
+   * la lista. Antes se desplegaba aquí mismo y, al subir el teclado, la
+   * rejilla del mes se iba de la pantalla: tocabas un día y lo perdías de
+   * vista justo cuando ibas a escribir sobre él.
+   */
+  const openComposer = (day: Date) => {
+    router.push({ pathname: '/day/[date]', params: { date: dayParam(day) } });
+  };
 
   const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
 
@@ -132,6 +138,10 @@ export default function CalendarScreen() {
             onSelect={setSelected}
             onMonthChange={setMonth}
             onOpenPicker={() => setPickingMonth(true)}
+            onAddOnDay={(day) => {
+              setSelected(day);
+              openComposer(day);
+            }}
           />
         )}
 
@@ -144,43 +154,21 @@ export default function CalendarScreen() {
             </Text>
           </View>
 
-          {dayEntries.length === 0 && dayEvents.length === 0 && !composing ? (
+          {dayEntries.length === 0 && dayEvents.length === 0 ? (
             <Text style={styles.empty}>Nada para este día.</Text>
           ) : null}
 
-          {composing ? (
-            <DayComposer
-              day={selected}
-              tags={tags}
-              detectionEnabled={detect}
-              onCancel={() => setComposing(false)}
-              onSubmit={async (input) => {
-                await addEntryOnDate({
-                  type: input.type,
-                  title: input.title,
-                  dueAt: input.dueAt,
-                  tagId: input.tagId,
-                });
-                setComposing(false);
-                showToast(toastText.saved(input.type));
-              }}
-            />
-          ) : (
-            <Pressable
-              onPress={() => setComposing(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Añadir en este día"
-              style={({ pressed }) => [
-                styles.addRow,
-                { opacity: pressed ? 0.72 : 1 },
-              ]}
-            >
-              <Icon name="plus" size={15} color={color.accent} />
-              <Text style={[typography.secondary, { color: color.accent }]}>
-                Añadir en este día
-              </Text>
-            </Pressable>
-          )}
+          <Pressable
+            onPress={() => openComposer(selected)}
+            accessibilityRole="button"
+            accessibilityLabel="Añadir en este día"
+            style={({ pressed }) => [styles.addRow, { opacity: pressed ? 0.72 : 1 }]}
+          >
+            <Icon name="plus" size={15} color={color.accent} />
+            <Text style={[typography.secondary, { color: color.accent }]}>
+              Añadir en este día
+            </Text>
+          </Pressable>
 
           {dayEntries.map((entry) => (
             <DatedRow
