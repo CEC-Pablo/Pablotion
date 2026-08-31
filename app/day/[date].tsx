@@ -30,7 +30,7 @@ import {
   DayComposer,
   SHEET_MAX_HEIGHT_RATIO,
 } from '../../src/features/calendar/DayComposer';
-import { toast as toastText } from '../../src/i18n';
+import { seriesCreated, toast as toastText } from '../../src/i18n';
 import { DAY_PARAM_FORMAT, headerDate } from '../../src/lib/dates';
 import { useKeyboardLift } from '../../src/lib/useKeyboardLift';
 import { useStore } from '../../src/store/useStore';
@@ -58,6 +58,7 @@ export default function DaySheet() {
   const tags = useStore((s) => s.tags);
   const detect = useStore((s) => s.settings.detect);
   const addEntryOnDate = useStore((s) => s.addEntryOnDate);
+  const addSeriesOnDate = useStore((s) => s.addSeriesOnDate);
   const showToast = useStore((s) => s.showToast);
 
   const day = useMemo(() => {
@@ -109,13 +110,29 @@ export default function DaySheet() {
             Keyboard.dismiss();
             router.back();
 
-            void addEntryOnDate({
-              type: input.type,
-              title: input.title,
-              dueAt: input.dueAt,
-              tagId: input.tagId,
-            })
-              .then(() => showToast(toastText.saved(input.type)))
+            // Una copia sola pasa por el camino de siempre; varias van por el
+            // que las escribe todas en una transacción y reprograma una vez.
+            const saved =
+              input.dates.length === 1
+                ? addEntryOnDate({
+                    type: input.type,
+                    title: input.title,
+                    dueAt: input.dates[0],
+                    tagId: input.tagId,
+                  }).then(() => 1)
+                : addSeriesOnDate({
+                    type: input.type,
+                    title: input.title,
+                    dates: input.dates,
+                    tagId: input.tagId,
+                  });
+
+            void saved
+              .then((copies) =>
+                showToast(
+                  copies === 1 ? toastText.saved(input.type) : seriesCreated(copies)
+                )
+              )
               .catch((error: unknown) => showToast(`No se pudo guardar: ${String(error)}`));
           }}
         />

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { differenceInCalendarDays } from 'date-fns';
+import { addWeeks, differenceInCalendarDays } from 'date-fns';
 
 import {
   WINDOW_GLOBAL,
@@ -308,4 +308,34 @@ test('el tope global sigue respetándose con reglas insistentes', () => {
   const total = allocateWindow(plans).reduce((n, p) => n + p.occurrences.length, 0);
   assert.ok(total <= WINDOW_GLOBAL, `${total} supera el tope de ${WINDOW_GLOBAL}`);
   assert.ok(total <= 64, 'supera el límite duro de iOS');
+});
+
+test('una serie de 120 lunes no revienta el presupuesto de notificaciones', () => {
+  // Repetir «todos los lunes» crea entradas de verdad, y cada tarea trae su
+  // regla `once`. Ciento veinte reglas contra un tope de 56 solicitudes
+  // pendientes: el reparto tiene que quedarse con las más cercanas y dejar
+  // el resto para cuando la app vuelva a primer plano. Es exactamente lo que
+  // la ventana deslizante ya hacía con una regla insistente, aplicado a
+  // muchas reglas de una sola ocurrencia.
+  const now = at('2026-09-07T09:00:00');
+  const plans: RulePlan[] = Array.from({ length: 120 }, (_, i) => ({
+    ruleId: `lunes-${i}`,
+    occurrences: [addWeeks(now, i)],
+  }));
+
+  const allocated = allocateWindow(plans);
+  const programadas = allocated.flatMap((p) => p.occurrences);
+
+  assert.equal(programadas.length, WINDOW_GLOBAL, 'debería llenar el cupo y parar');
+  assert.ok(programadas.length <= 64, 'supera el límite duro de iOS');
+
+  // Y son las primeras, no unas cualesquiera: lo que se descarta es el
+  // futuro lejano, que todavía hay tiempo de programar.
+  const ordenadas = [...programadas].sort((a, b) => a.getTime() - b.getTime());
+  assert.equal(ordenadas[0].getTime(), now.getTime());
+  assert.equal(
+    ordenadas[ordenadas.length - 1].getTime(),
+    addWeeks(now, WINDOW_GLOBAL - 1).getTime(),
+    'se quedó con lunes salteados en vez de con los más próximos'
+  );
 });

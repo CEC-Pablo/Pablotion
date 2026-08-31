@@ -20,14 +20,28 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button } from '../../components/Button';
+import { Chip } from '../../components/Chip';
 import { Icon, TYPE_ICON } from '../../components/Icon';
 import { TagDot, Touchable } from '../../components/primitives';
-import { TYPE_CYCLE, TYPE_LABEL } from '../../i18n';
+import {
+  SERIES_FREQUENCY_CYCLE,
+  SERIES_FREQUENCY_LABEL,
+  TYPE_CYCLE,
+  TYPE_LABEL,
+  seriesMonthsLabel,
+} from '../../i18n';
 import { formatHHMM } from '../../lib/dates';
 import { detectType } from '../capture/detectType';
 import { TimeRow } from '../reminders/TimeRow';
+import { describeSeries, seriesDates } from './series';
 import { color, layout, radius, type as typography } from '../../theme/tokens';
-import type { EntryType, Tag } from '../../types';
+import {
+  SERIES_MONTHS,
+  type EntryType,
+  type SeriesFrequency,
+  type SeriesMonths,
+  type Tag,
+} from '../../types';
 
 export function DayComposer({
   day,
@@ -48,7 +62,11 @@ export function DayComposer({
   onSubmit: (input: {
     type: EntryType;
     title: string;
-    dueAt: Date;
+    /**
+     * Todas las fechas de la serie, con la hora ya puesta. Sin repetición es
+     * un array de una: quien lo recibe no tiene que distinguir los dos casos.
+     */
+    dates: Date[];
     tagId: string | null;
   }) => void;
   onCancel: () => void;
@@ -59,19 +77,30 @@ export function DayComposer({
   const [hour, setHour] = useState(9);
   const [minute, setMinute] = useState(0);
   const [pickingTag, setPickingTag] = useState(false);
+  const [pickingRepeat, setPickingRepeat] = useState(false);
+
+  /** `null` es «no repetir», que es lo normal y por eso es lo que viene puesto. */
+  const [repeat, setRepeat] = useState<SeriesFrequency | null>(null);
+  const [months, setMonths] = useState<SeriesMonths>(3);
 
   const hasText = title.trim().length > 0;
   const detected = detectionEnabled ? detectType(title) : 'note';
   const type = override ?? detected;
   const tag = tags.find((t) => t.id === tagId) ?? null;
 
+  const dueAt = new Date(day);
+  dueAt.setHours(hour, minute, 0, 0);
+
+  // Se recalcula en cada render sin memo: son como mucho 120 sumas de fechas,
+  // y tenerlo siempre fresco es lo que permite enseñar la vista previa en vivo
+  // mientras se toquetean las opciones.
+  const dates = repeat ? seriesDates(dueAt, repeat, months) : [dueAt];
+
   const handleSubmit = () => {
     const text = title.trim();
     if (!text) return;
 
-    const dueAt = new Date(day);
-    dueAt.setHours(hour, minute, 0, 0);
-    onSubmit({ type, title: text, dueAt, tagId });
+    onSubmit({ type, title: text, dates, tagId });
   };
 
   return (
@@ -160,6 +189,92 @@ export function DayComposer({
           }}
         />
 
+        {/* Repetir: plegado y en «No» por defecto. Anotar algo un día suelto
+            sigue costando lo mismo que antes; quien necesita los trece lunes
+            lo abre. */}
+        <View style={styles.pickerWrap}>
+          <Pressable
+            onPress={() => setPickingRepeat(!pickingRepeat)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: pickingRepeat }}
+            accessibilityLabel={
+              repeat
+                ? `Repetir ${SERIES_FREQUENCY_LABEL[repeat].toLowerCase()} durante ${seriesMonthsLabel(months)}`
+                : 'No se repite'
+            }
+            style={styles.pickerRow}
+          >
+            <View style={styles.pickerLabel}>
+              <Icon name="clock-counter-clockwise" size={16} color={color.neutral[400]} />
+              <Text style={[typography.body, { color: color.neutral[400] }]}>
+                Repetir
+              </Text>
+            </View>
+
+            <View style={styles.pickerValue}>
+              <Text
+                style={[
+                  typography.secondary,
+                  { color: repeat ? color.accent : color.neutral[500] },
+                ]}
+                numberOfLines={1}
+              >
+                {repeat ? SERIES_FREQUENCY_LABEL[repeat] : 'No'}
+              </Text>
+              <Icon
+                name="caret-down"
+                size={13}
+                color={repeat ? color.accent : color.neutral[500]}
+              />
+            </View>
+          </Pressable>
+
+          {pickingRepeat ? (
+            <View style={styles.repeatPanel}>
+              <View style={styles.chipRow}>
+                <Chip
+                  label="No repetir"
+                  height={36}
+                  active={repeat === null}
+                  onPress={() => setRepeat(null)}
+                />
+                {SERIES_FREQUENCY_CYCLE.map((option) => (
+                  <Chip
+                    key={option}
+                    label={SERIES_FREQUENCY_LABEL[option]}
+                    height={36}
+                    active={repeat === option}
+                    onPress={() => setRepeat(option)}
+                  />
+                ))}
+              </View>
+
+              {repeat ? (
+                <>
+                  <Text style={styles.repeatCaption}>Durante</Text>
+                  <View style={styles.chipRow}>
+                    {SERIES_MONTHS.map((option) => (
+                      <Chip
+                        key={option}
+                        label={seriesMonthsLabel(option)}
+                        height={36}
+                        active={months === option}
+                        onPress={() => setMonths(option)}
+                      />
+                    ))}
+                  </View>
+
+                  {/* Nada se crea sin poder verlo antes. Aquí importa el doble:
+                      confirmar sin mirar puede sembrar el mes de filas. */}
+                  <Text style={styles.repeatPreview}>
+                    {describeSeries(dates, repeat)}
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+
         {tags.length > 0 ? (
           <View style={styles.pickerWrap}>
             <Pressable
@@ -236,7 +351,7 @@ export function DayComposer({
             : `Te avisará a las ${formatHHMM(hour, minute)}.`}
         </Text>
         <Button
-          label="Añadir"
+          label={dates.length > 1 ? `Añadir ${dates.length} veces` : 'Añadir'}
           icon="plus"
           onPress={handleSubmit}
           disabled={!hasText}
@@ -351,6 +466,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     minHeight: layout.minTouch,
     maxWidth: '60%',
+  },
+  repeatPanel: {
+    paddingTop: 10,
+    gap: 10,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  repeatCaption: {
+    ...typography.meta,
+    fontSize: 12,
+    color: color.neutral[600],
+    marginBottom: -4,
+  },
+  repeatPreview: {
+    ...typography.secondary,
+    color: color.accentRamp[300],
+    borderLeftWidth: 2,
+    borderLeftColor: color.accent,
+    paddingLeft: 10,
   },
   tagRow: {
     flexDirection: 'row',

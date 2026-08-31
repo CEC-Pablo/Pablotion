@@ -9,7 +9,7 @@ import * as SQLite from 'expo-sqlite';
 import { TAG_PALETTE } from '../../theme/tokens';
 
 const DATABASE_NAME = 'trazo.db';
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 
 /** Las seis etiquetas sembradas al instalar. Seis en total, no seis por nota. */
 const SEED_TAGS: { name: string; color: string }[] = [
@@ -194,6 +194,31 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     await db.execAsync('PRAGMA user_version = 4');
   }
 
+  if (version === 4) {
+    // Series repetidas: las copias de «todos los lunes durante tres meses»
+    // comparten este identificador. Es lo único que las une; por lo demás
+    // son entradas normales y corrientes, que es justo la gracia — cada una
+    // se completa y se borra por su cuenta.
+    //
+    // Aditiva y sin clave foránea a propósito: no hay tabla `series`. Una
+    // serie no es una entidad con vida propia, es una etiqueta compartida;
+    // crear una tabla solo para guardar un id sería ceremonia sin uso.
+    if (!(await hasColumn(db, 'entries', 'series_id'))) {
+      await db.execAsync('ALTER TABLE entries ADD COLUMN series_id TEXT');
+    }
+
+    // En una línea a propósito: el test de migraciones extrae el SQL de este
+    // archivo con una expresión regular que exige la comilla pegada al
+    // paréntesis de execAsync. Partida en tres líneas seguiría funcionando en
+    // el teléfono, pero el test dejaría de comprobarla sin decir nada.
+    //
+    // (Y ojo con escribir esa forma dentro de un comentario: la expresión
+    // regular no distingue código de prosa y se traga lo que encuentre.)
+    await db.execAsync('CREATE INDEX IF NOT EXISTS idx_entries_series ON entries (series_id)');
+
+    version = 5;
+    await db.execAsync('PRAGMA user_version = 5');
+  }
 }
 
 let handle: Promise<SQLite.SQLiteDatabase> | null = null;

@@ -185,6 +185,63 @@ test('un prompt no tiene tope de longitud', () => {
   }
 });
 
+test('la migración 5 añade series_id una sola vez, con su índice', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    for (const statement of extractSql()) db.exec(statement);
+
+    const columns = db
+      .prepare('PRAGMA table_info(entries)')
+      .all()
+      .map((row) => (row as { name: string }).name);
+
+    assert.equal(
+      columns.filter((c) => c === 'series_id').length,
+      1,
+      'la columna tiene que existir exactamente una vez'
+    );
+
+    // El índice no es decoración: borrar una serie es un DELETE por
+    // `series_id` y la lista puede tener cientos de entradas.
+    const indexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
+      .all()
+      .map((row) => (row as { name: string }).name);
+
+    assert.ok(indexes.includes('idx_entries_series'), 'falta el índice de series');
+  } finally {
+    db.close();
+  }
+});
+
+test('borrar una serie se lleva sus copias y solo esas', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    for (const statement of extractSql()) db.exec(statement);
+
+    const insert = db.prepare(
+      `INSERT INTO entries (id, type, title, body, created_at, updated_at, completed, series_id)
+       VALUES (?, 'task', ?, '', 'x', 'x', 0, ?)`
+    );
+    insert.run('a1', 'Pastilla', 'serie-1');
+    insert.run('a2', 'Pastilla', 'serie-1');
+    insert.run('a3', 'Pastilla', 'serie-1');
+    insert.run('b1', 'Otra cosa', 'serie-2');
+    insert.run('c1', 'Nota suelta', null);
+
+    db.prepare('DELETE FROM entries WHERE series_id = ?').run('serie-1');
+
+    const left = db
+      .prepare('SELECT id FROM entries ORDER BY id')
+      .all()
+      .map((row) => (row as { id: string }).id);
+
+    assert.deepEqual(left, ['b1', 'c1'], 'se llevó por delante lo que no era suyo');
+  } finally {
+    db.close();
+  }
+});
+
 /** La SQL con la que se siembran las seis etiquetas, extraída de `runAsync`. */
 function seedTagsSql(): string {
   const match = source.match(/runAsync\(\s*'(INSERT[^']*INTO tags[^']*)'/);

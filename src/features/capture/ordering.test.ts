@@ -30,6 +30,7 @@ function entry(over: Partial<Entry> = {}): Entry {
     subtasks: [],
     calendar_event_id: null,
     position: 0,
+    series_id: null,
     ...over,
   };
 }

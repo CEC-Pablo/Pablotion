@@ -19,7 +19,12 @@ import {
   Touchable,
 } from '../../src/components/primitives';
 import { Toast } from '../../src/components/Toast';
-import { PRIORITY_CYCLE, PRIORITY_LABEL, toast as toastText } from '../../src/i18n';
+import {
+  PRIORITY_CYCLE,
+  PRIORITY_LABEL,
+  seriesRemoved,
+  toast as toastText,
+} from '../../src/i18n';
 import { formatCreated, formatShortDue } from '../../src/lib/dates';
 import { useStore } from '../../src/store/useStore';
 import {
@@ -28,9 +33,14 @@ import {
   radius,
   type as typography,
 } from '../../src/theme/tokens';
-import type { EntryType } from '../../src/types';
+import type { Entry, EntryType } from '../../src/types';
 
 const AUTOSAVE_MS = 500;
+
+/** El `series_id` de una entrada, o null si no forma parte de ninguna serie. */
+function entrySeriesId(entries: Entry[], id: string | undefined): string | null {
+  return entries.find((e) => e.id === id)?.series_id ?? null;
+}
 const TYPES: EntryType[] = ['note', 'task', 'reminder'];
 
 export default function NoteEditor() {
@@ -41,6 +51,14 @@ export default function NoteEditor() {
   const tags = useStore((s) => s.tags);
   const patchEntry = useStore((s) => s.patchEntry);
   const removeEntry = useStore((s) => s.removeEntry);
+  const removeSeries = useStore((s) => s.removeSeries);
+  // Cuántas copias tiene la serie a la que pertenece, ella incluida. Si no
+  // es parte de ninguna, sale 0 y el bloque de repeticiones ni aparece.
+  const siblings = useStore((s) =>
+    entrySeriesId(s.entries, id) === null
+      ? 0
+      : s.entries.filter((e) => e.series_id === entrySeriesId(s.entries, id)).length
+  );
   const toast = useStore((s) => s.toast);
   const showToast = useStore((s) => s.showToast);
   const hideToast = useStore((s) => s.hideToast);
@@ -49,6 +67,7 @@ export default function NoteEditor() {
   const [body, setBody] = useState(entry?.body ?? '');
   const [pickingTag, setPickingTag] = useState(false);
   const [pickingPriority, setPickingPriority] = useState(false);
+  const [confirmingSeries, setConfirmingSeries] = useState(false);
   const dirty = useRef(false);
 
   const tag = useMemo(
@@ -267,7 +286,24 @@ export default function NoteEditor() {
           </Text>
         </View>
 
-        <View style={{ marginTop: layout.sectionMarginTop, alignItems: 'flex-start' }}>
+        {/* Si esto es una copia de una serie repetida, borrarlas a mano una
+            por una sería peor que haberlas creado a mano — que es justo de lo
+            que la serie venía a librarte. */}
+        {siblings > 1 ? (
+          <View style={styles.seriesBox}>
+            <View style={styles.seriesHead}>
+              <Icon name="clock-counter-clockwise" size={15} color={color.accent} />
+              <Text style={styles.seriesText}>
+                Una de {siblings} copias repetidas.
+              </Text>
+            </View>
+            <Text style={styles.seriesHint}>
+              Eliminar aquí borra solo esta. Las demás siguen en su día.
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.deleteRow}>
           <Button
             label="Eliminar"
             variant="ghost"
@@ -278,6 +314,27 @@ export default function NoteEditor() {
               router.replace('/');
             }}
           />
+
+          {siblings > 1 ? (
+            <Button
+              label={
+                confirmingSeries ? `Sí, borrar las ${siblings}` : 'Eliminar las repeticiones'
+              }
+              variant={confirmingSeries ? 'primary' : 'ghost'}
+              icon="trash"
+              onPress={async () => {
+                // Dos toques: se lleva por delante hasta ciento veinte cosas y
+                // no hay deshacer en ninguna parte de la app.
+                if (!confirmingSeries) {
+                  setConfirmingSeries(true);
+                  return;
+                }
+                const gone = await removeSeries(entry.series_id!);
+                showToast(seriesRemoved(gone));
+                router.replace('/');
+              }}
+            />
+          ) : null}
         </View>
       </ScrollView>
 
@@ -336,6 +393,37 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 13,
     minHeight: layout.minTouch,
+  },
+  seriesBox: {
+    marginTop: layout.sectionMarginTop,
+    padding: 12,
+    gap: 4,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.accentRamp[800],
+    backgroundColor: color.accentRamp[900],
+  },
+  seriesHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  seriesText: {
+    ...typography.secondary,
+    color: color.accentRamp[200],
+    flexShrink: 1,
+  },
+  seriesHint: {
+    ...typography.meta,
+    fontSize: 12,
+    color: color.accentRamp[400],
+  },
+  deleteRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: layout.sectionMarginTop,
   },
   metaLabel: {
     ...typography.secondary,

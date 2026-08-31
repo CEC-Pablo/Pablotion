@@ -17,7 +17,7 @@ import { Platform } from 'react-native';
 import { RELATIVE_LABEL } from '../../i18n';
 import {
   forgetScheduledForRule,
-  getEntry,
+  getEntriesByIds,
   listActiveRules,
   listRules,
   listScheduled,
@@ -170,13 +170,14 @@ export async function reconcileAll(now: Date = new Date()): Promise<void> {
     return;
   }
 
-  const entries = new Map<string, Entry>();
-  for (const rule of rules) {
-    if (!entries.has(rule.entry_id)) {
-      const entry = await getEntry(rule.entry_id);
-      if (entry) entries.set(rule.entry_id, entry);
-    }
-  }
+  // De una vez, no una consulta por regla. Con un recordatorio suelto la
+  // diferencia no se nota; con una serie de noventa lunes eran noventa idas y
+  // vueltas a SQLite cada vez que la app vuelve a primer plano, que es algo
+  // que ocurre constantemente.
+  const entryIds = [...new Set(rules.map((rule) => rule.entry_id))];
+  const entries = new Map<string, Entry>(
+    (await getEntriesByIds(entryIds)).map((entry) => [entry.id, entry])
+  );
 
   // Las principales primero: las relativas se calculan a partir de su serie.
   const rank = (rule: NotificationRule) => (rule.kind === 'primary' ? 0 : 1);

@@ -32,6 +32,7 @@ interface EntryRow {
   priority: Priority | null;
   calendar_event_id: string | null;
   position: number;
+  series_id: string | null;
 }
 
 interface SubtaskRow {
@@ -45,6 +46,9 @@ interface SubtaskRow {
 interface RuleRow extends Omit<NotificationRule, 'active'> {
   active: number;
 }
+
+/** Cuántos identificadores caben en un `IN (...)` sin acercarse al tope. */
+const ID_BATCH = 400;
 
 const toEntry = (row: EntryRow, subtasks: Subtask[]): Entry => ({
   ...row,
@@ -104,14 +108,15 @@ export async function createEntry(input: {
   tag_id?: string | null;
   due_at?: string | null;
   priority?: Priority | null;
+  series_id?: string | null;
 }): Promise<Entry> {
   const db = await getDb();
   const now = new Date().toISOString();
   const entryId = id();
 
   await db.runAsync(
-    `INSERT INTO entries (id, type, title, body, tag_id, created_at, updated_at, due_at, completed, priority)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+    `INSERT INTO entries (id, type, title, body, tag_id, created_at, updated_at, due_at, completed, priority, series_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     [
       entryId,
       input.type,
@@ -122,6 +127,7 @@ export async function createEntry(input: {
       now,
       input.due_at ?? null,
       input.priority ?? null,
+      input.series_id ?? null,
     ]
   );
 
@@ -139,6 +145,7 @@ export async function createEntry(input: {
     subtasks: [],
     calendar_event_id: null,
     position: 0,
+    series_id: input.series_id ?? null,
   };
 }
 
@@ -179,6 +186,112 @@ export async function updateEntry(entryId: string, patch: EntryPatch): Promise<v
 export async function deleteEntry(entryId: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM entries WHERE id = ?', [entryId]);
+}
+
+/**
+ * Varias entradas de golpe: las copias de una serie repetida.
+ *
+ * Todo dentro de **una transacción**, y por dos razones distintas. La obvia es
+ * la velocidad: sin ella, SQLite confirma cada INSERT por separado y crear
+ * noventa copias son ciento ochenta confirmaciones a disco, con el usuario
+ * mirando una pantalla congelada. La que de verdad importa es la otra: si algo
+ * falla a mitad, no queremos quedarnos con cuarenta lunes sueltos y sin forma
+ * de saber cuáles faltaban. O están las noventa o no está ninguna.
+ *
+ * Las reglas `once` de tareas y recordatorios entran aquí mismo, por lo mismo.
+ * Reprogramar las notificaciones **no** va dentro: eso habla con el sistema
+ * operativo, no con la base, y se hace una sola vez al final.
+ */
+export async function createSeries(input: {
+  type: EntryType;
+  title: string;
+  tag_id: string | null;
+  dates: Date[];
+}): Promise<{ seriesId: string; entryIds: string[] }> {
+  const db = await getDb();
+  const seriesId = id();
+  const now = new Date().toISOString();
+  const entryIds = input.dates.map(() => id());
+
+  // Las notas solo quedan fechadas; lo que hace sonar el teléfono es la regla.
+  const needsRule = input.type === 'task' || input.type === 'reminder';
+
+  await db.withTransactionAsync(async () => {
+    for (const [index, date] of input.dates.entries()) {
+      const entryId = entryIds[index];
+
+      await db.runAsync(
+        `INSERT INTO entries (id, type, title, body, tag_id, created_at, updated_at, due_at, completed, priority, series_id)
+         VALUES (?, ?, ?, '', ?, ?, ?, ?, 0, NULL, ?)`,
+        [entryId, input.type, input.title, input.tag_id, now, now, date.toISOString(), seriesId]
+      );
+
+      if (needsRule) {
+        await db.runAsync(
+          `INSERT INTO notification_rules
+             (id, entry_id, kind, frequency, weekly_day, custom_interval, custom_unit,
+              relative_offset_minutes, next_trigger_at, active)
+           VALUES (?, ?, 'primary', 'once', NULL, NULL, NULL, NULL, NULL, 1)`,
+          [id(), entryId]
+        );
+      }
+    }
+  });
+
+  return { seriesId, entryIds };
+}
+
+/** Borra de una vez todas las copias de una serie. */
+export async function deleteSeries(seriesId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM entries WHERE series_id = ?', [seriesId]);
+}
+
+/**
+ * Las entradas de una lista de identificadores, en dos consultas.
+ *
+ * Existe por la reconciliación de notificaciones: pedía la entrada de cada
+ * regla por separado, y eso era una consulta por regla. Con una entrada suelta
+ * daba igual; con una serie de noventa lunes son noventa idas y vueltas a la
+ * base cada vez que la app vuelve a primer plano.
+ */
+export async function getEntriesByIds(ids: string[]): Promise<Entry[]> {
+  if (ids.length === 0) return [];
+
+  const db = await getDb();
+  const rows: EntryRow[] = [];
+  const subs: SubtaskRow[] = [];
+
+  // SQLite tiene un tope de parámetros por consulta, así que la lista se parte
+  // en tandas. Hoy haría falta un calendario enorme para llegar, pero un `IN`
+  // que crece con los datos del usuario es de esas cosas que fallan tarde,
+  // solo a quien más usa la app y sin dejar rastro de por qué.
+  for (let start = 0; start < ids.length; start += ID_BATCH) {
+    const chunk = ids.slice(start, start + ID_BATCH);
+    const holes = chunk.map(() => '?').join(', ');
+
+    rows.push(
+      ...(await db.getAllAsync<EntryRow>(
+        `SELECT * FROM entries WHERE id IN (${holes})`,
+        chunk
+      ))
+    );
+    subs.push(
+      ...(await db.getAllAsync<SubtaskRow>(
+        `SELECT * FROM subtasks WHERE entry_id IN (${holes}) ORDER BY position ASC`,
+        chunk
+      ))
+    );
+  }
+
+  const byEntry = new Map<string, Subtask[]>();
+  for (const row of subs) {
+    const list = byEntry.get(row.entry_id) ?? [];
+    list.push(toSubtask(row));
+    byEntry.set(row.entry_id, list);
+  }
+
+  return rows.map((row) => toEntry(row, byEntry.get(row.id) ?? []));
 }
 
 /* --------------------------------------------------------------- subtasks */

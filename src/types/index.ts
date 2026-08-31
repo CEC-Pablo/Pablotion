@@ -38,6 +38,15 @@ export interface Entry {
    * Menor va antes. Empata por `created_at` mientras nadie haya arrastrado.
    */
   position: number;
+  /**
+   * Identificador compartido por las copias de una serie repetida — los
+   * trece lunes de «pastilla todos los lunes durante tres meses».
+   *
+   * `null` en todo lo que se creó de una sola vez, que es la mayoría. No
+   * cambia nada del comportamiento de la entrada: solo sirve para poder
+   * borrar el grupo entero de una vez.
+   */
+  series_id: string | null;
 }
 
 export interface Subtask {
@@ -130,3 +139,15 @@ export interface Prompt {
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Cada cuánto se repite una serie del calendario.
+ *
+ * Vive aquí y no junto a su lógica porque la capa de presentación necesita
+ * ponerle nombre en español, y `i18n` no debe depender de una feature.
+ */
+export type SeriesFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly';
+
+/** Cuánto dura una serie, en meses. */
+export const SERIES_MONTHS = [1, 3, 6, 12] as const;
+export type SeriesMonths = (typeof SERIES_MONTHS)[number];

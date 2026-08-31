@@ -100,6 +100,18 @@ interface Store {
     tagId?: string | null;
     syncToCalendar?: boolean;
   }) => Promise<Entry>;
+  /**
+   * Crea de golpe todas las copias de una serie repetida y devuelve
+   * cuántas fueron. La primera fecha es la del día que se tocó.
+   */
+  addSeriesOnDate: (input: {
+    type: EntryType;
+    title: string;
+    dates: Date[];
+    tagId?: string | null;
+  }) => Promise<number>;
+  /** Borra todas las copias de una serie. Devuelve cuántas se llevó. */
+  removeSeries: (seriesId: string) => Promise<number>;
   patchEntry: (
     id: string,
     patch: Partial<Pick<Entry, 'type' | 'title' | 'body' | 'tag_id' | 'priority'>>
@@ -218,6 +230,46 @@ export const useStore = create<Store>((set, get) => ({
     }
 
     return entry;
+  },
+
+  addSeriesOnDate: async ({ type, title, dates, tagId }) => {
+    const { entryIds } = await db.createSeries({
+      type,
+      title,
+      tag_id: tagId ?? null,
+      dates,
+    });
+
+    // Una sola reconciliación al final, no una por copia.
+    //
+    // Es tentador reutilizar `addEntryOnDate` en un bucle y ahorrarse este
+    // método. No lo hagas: esa función reprograma **todas** las
+    // notificaciones y recarga el estado entero en cada llamada, así que
+    // trece lunes serían trece recálculos completos y noventa días, noventa.
+    // El trabajo crece con el cuadrado de lo que el usuario pidió.
+    await reconcileAll();
+    await get().refresh();
+
+    return entryIds.length;
+  },
+
+  removeSeries: async (seriesId) => {
+    const ids = get()
+      .entries.filter((e) => e.series_id === seriesId)
+      .map((e) => e.id);
+
+    // Cancelar antes de borrar, igual que con una entrada suelta: si se
+    // borra primero, las reglas caen por cascada y se van con ellas los
+    // identificadores que hacían falta para cancelar. Las notificaciones
+    // seguirían sonando para cosas que ya no existen.
+    for (const id of ids) {
+      await cancelForEntry(id);
+    }
+
+    await db.deleteSeries(seriesId);
+    await get().refresh();
+
+    return ids.length;
   },
 
   patchEntry: async (id, patch) => {

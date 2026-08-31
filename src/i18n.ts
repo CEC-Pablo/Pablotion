@@ -3,7 +3,7 @@
  * (§ conflicto 3 del handoff unificado); todo literal visible sale de aquí.
  */
 
-import type { EntryType, Frequency, Priority } from './types';
+import type { EntryType, Frequency, Priority, SeriesFrequency } from './types';
 
 export const TYPE_LABEL: Record<EntryType, string> = {
   note: 'Nota',
@@ -156,4 +156,34 @@ export function promptTitle(label: string, body: string): string {
 
   if (!firstLine) return 'Prompt sin título';
   return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+}
+
+/** Cada cuánto se repite una serie del calendario. */
+export const SERIES_FREQUENCY_LABEL: Record<SeriesFrequency, string> = {
+  daily: 'Cada día',
+  weekly: 'Cada semana',
+  biweekly: 'Cada 2 semanas',
+  monthly: 'Cada mes',
+};
+
+/** Orden en que se ofrecen, de más frecuente a menos. */
+export const SERIES_FREQUENCY_CYCLE: SeriesFrequency[] = [
+  'daily',
+  'weekly',
+  'biweekly',
+  'monthly',
+];
+
+/** «Durante 3 meses». Doce meses se dicen «1 año», que es como se habla. */
+export function seriesMonthsLabel(months: number): string {
+  if (months === 12) return '1 año';
+  return months === 1 ? '1 mes' : `${months} meses`;
+}
+
+export function seriesCreated(copies: number): string {
+  return copies === 1 ? 'Guardado' : `Guardadas ${copies} copias`;
+}
+
+export function seriesRemoved(copies: number): string {
+  return copies === 1 ? 'Eliminado' : `Eliminadas las ${copies} copias`;
 }
