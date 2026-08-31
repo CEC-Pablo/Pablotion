@@ -270,6 +270,10 @@ const styles = StyleSheet.create({
   },
   swatches: {
     flexDirection: 'row',
+    // La paleta pasó de seis colores a dieciséis y esta fila se quedó sin
+    // `flexWrap`: los últimos se salían del ancho de la pantalla y no había
+    // forma de tocarlos.
+    flexWrap: 'wrap',
     gap: 8,
   },
   swatch: {
