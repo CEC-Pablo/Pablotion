@@ -3,10 +3,12 @@
  */
 
 import type {
+  Course,
   Entry,
   EntryType,
   NotificationRule,
   Priority,
+  Prompt,
   RuleKind,
   ScheduledNotification,
   Subtask,
@@ -421,4 +423,113 @@ export async function writeSetting(key: string, value: string): Promise<void> {
     'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
     [key, value]
   );
+}
+
+/* ------------------------------------------------- ramos y sus prompts */
+
+export async function listCourses(): Promise<Course[]> {
+  const db = await getDb();
+  return db.getAllAsync<Course>(
+    'SELECT * FROM courses ORDER BY position ASC, created_at ASC'
+  );
+}
+
+export async function listPrompts(): Promise<Prompt[]> {
+  const db = await getDb();
+  return db.getAllAsync<Prompt>(
+    'SELECT * FROM prompts ORDER BY course_id ASC, position ASC'
+  );
+}
+
+export async function createCourse(name: string, color: string): Promise<Course> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ next: number }>(
+    'SELECT COALESCE(MAX(position) + 1, 0) AS next FROM courses'
+  );
+
+  const course: Course = {
+    id: id(),
+    name,
+    color,
+    position: row?.next ?? 0,
+    created_at: new Date().toISOString(),
+  };
+
+  await db.runAsync(
+    'INSERT INTO courses (id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)',
+    [course.id, course.name, course.color, course.position, course.created_at]
+  );
+  return course;
+}
+
+export async function updateCourse(
+  courseId: string,
+  patch: { name?: string; color?: string }
+): Promise<void> {
+  const keys = Object.keys(patch) as ('name' | 'color')[];
+  if (keys.length === 0) return;
+
+  const db = await getDb();
+  const sets = keys.map((k) => `${k} = ?`).join(', ');
+  await db.runAsync(`UPDATE courses SET ${sets} WHERE id = ?`, [
+    ...keys.map((k) => patch[k]!),
+    courseId,
+  ]);
+}
+
+/** Los prompts del ramo caen por ON DELETE CASCADE. */
+export async function deleteCourse(courseId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM courses WHERE id = ?', [courseId]);
+}
+
+/**
+ * Nace vacío y se abre en su pantalla para pegar dentro. Es el mismo gesto que
+ * usa la app para crear una etiqueta: nada de diálogos previos.
+ */
+export async function createPrompt(courseId: string): Promise<Prompt> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ next: number }>(
+    'SELECT COALESCE(MAX(position) + 1, 0) AS next FROM prompts WHERE course_id = ?',
+    [courseId]
+  );
+
+  const now = new Date().toISOString();
+  const prompt: Prompt = {
+    id: id(),
+    course_id: courseId,
+    label: '',
+    body: '',
+    position: row?.next ?? 0,
+    created_at: now,
+    updated_at: now,
+  };
+
+  await db.runAsync(
+    `INSERT INTO prompts (id, course_id, label, body, position, created_at, updated_at)
+     VALUES (?, ?, '', '', ?, ?, ?)`,
+    [prompt.id, courseId, prompt.position, now, now]
+  );
+  return prompt;
+}
+
+export async function updatePrompt(
+  promptId: string,
+  patch: { label?: string; body?: string }
+): Promise<void> {
+  const keys = Object.keys(patch) as ('label' | 'body')[];
+  if (keys.length === 0) return;
+
+  const db = await getDb();
+  const sets = keys.map((k) => `${k} = ?`).join(', ');
+  await db.runAsync(`UPDATE prompts SET ${sets}, updated_at = ? WHERE id = ?`, [
+    ...keys.map((k) => patch[k]!),
+    new Date().toISOString(),
+    promptId,
+  ]);
+}
+
+export async function deletePrompt(promptId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM prompts WHERE id = ?', [promptId]);
 }

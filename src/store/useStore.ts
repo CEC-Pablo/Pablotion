@@ -17,12 +17,14 @@ import * as calendar from '../lib/calendar';
 import * as db from '../lib/db/queries';
 import { cancelForEntry, reconcileAll } from '../lib/notifications';
 import type {
+  Course,
   CustomUnit,
   Entry,
   EntryType,
   Frequency,
   NotificationRule,
   Priority,
+  Prompt,
   Tag,
 } from '../types';
 
@@ -71,6 +73,9 @@ interface Store {
   tags: Tag[];
   counts: Record<string, number>;
   rules: Record<string, NotificationRule[]>;
+  /** Los ramos de la pestaña Ramos, y todos sus prompts en una sola lista. */
+  courses: Course[];
+  prompts: Prompt[];
   settings: Settings;
   toast: string | null;
 
@@ -125,6 +130,16 @@ interface Store {
   /** Devuelve la etiqueta creada, o `null` si ya hay seis. */
   addTag: (name: string, color: string) => Promise<Tag | null>;
 
+  /** Devuelve el ramo creado para poder abrirlo enseguida en renombrar. */
+  addCourse: (name: string, color: string) => Promise<Course>;
+  renameCourse: (id: string, patch: { name?: string; color?: string }) => Promise<void>;
+  /** Se lleva por delante los prompts del ramo (ON DELETE CASCADE). */
+  removeCourse: (id: string) => Promise<void>;
+  /** Crea un prompt vacío dentro del ramo y lo devuelve para abrirlo. */
+  addPrompt: (courseId: string) => Promise<Prompt>;
+  savePrompt: (id: string, patch: { label?: string; body?: string }) => Promise<void>;
+  removePrompt: (id: string) => Promise<void>;
+
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => Promise<void>;
   showToast: (message: string) => void;
   hideToast: () => void;
@@ -136,6 +151,8 @@ export const useStore = create<Store>((set, get) => ({
   tags: [],
   counts: {},
   rules: {},
+  courses: [],
+  prompts: [],
   settings: DEFAULT_SETTINGS,
   toast: null,
 
@@ -156,10 +173,12 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   refresh: async () => {
-    const [entries, tags, counts] = await Promise.all([
+    const [entries, tags, counts, courses, prompts] = await Promise.all([
       db.listEntries(),
       db.listTags(),
       db.tagCounts(),
+      db.listCourses(),
+      db.listPrompts(),
     ]);
 
     const rules: Record<string, NotificationRule[]> = {};
@@ -167,7 +186,7 @@ export const useStore = create<Store>((set, get) => ({
       if (entry.due_at) rules[entry.id] = await db.listRules(entry.id);
     }
 
-    set({ entries, tags, counts, rules });
+    set({ entries, tags, counts, rules, courses, prompts });
   },
 
   addEntry: async ({ type, title, tag_id }) => {
@@ -382,6 +401,50 @@ export const useStore = create<Store>((set, get) => ({
     set({ tags: [...get().tags, tag] });
     await get().refresh();
     return tag;
+  },
+
+  addCourse: async (name, color) => {
+    const course = await db.createCourse(name, color);
+    set({ courses: [...get().courses, course] });
+    return course;
+  },
+
+  renameCourse: async (id, patch) => {
+    await db.updateCourse(id, patch);
+    set({ courses: get().courses.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+  },
+
+  removeCourse: async (id) => {
+    await db.deleteCourse(id);
+    // Los prompts se van en la base por cascada; aquí hay que quitarlos a mano
+    // del caché, o la lista seguiría contándolos hasta el próximo arranque.
+    set({
+      courses: get().courses.filter((c) => c.id !== id),
+      prompts: get().prompts.filter((p) => p.course_id !== id),
+    });
+  },
+
+  addPrompt: async (courseId) => {
+    const prompt = await db.createPrompt(courseId);
+    set({ prompts: [...get().prompts, prompt] });
+    return prompt;
+  },
+
+  savePrompt: async (id, patch) => {
+    // Sin `refresh()`: el autoguardado dispara cada medio segundo mientras se
+    // escribe, y recargar entradas, reglas y etiquetas en cada pulsación sería
+    // absurdo. Se parchea el caché en sitio, como hace `patchEntry`.
+    await db.updatePrompt(id, patch);
+    set({
+      prompts: get().prompts.map((p) =>
+        p.id === id ? { ...p, ...patch, updated_at: new Date().toISOString() } : p
+      ),
+    });
+  },
+
+  removePrompt: async (id) => {
+    await db.deletePrompt(id);
+    set({ prompts: get().prompts.filter((p) => p.id !== id) });
   },
 
   setSetting: async (key, value) => {

@@ -1,7 +1,8 @@
 /**
- * Barra de pestañas global. Visible en Inicio, Tareas, Buscar y Etiquetas;
- * oculta en Onboarding, NoteEditor, Ajustes y ReminderCreator (esas rutas
- * viven fuera de este grupo).
+ * Barra de pestañas global. Visible en Inicio, Tareas, Calendario, Ramos,
+ * Buscar y Etiquetas; oculta en Onboarding, NoteEditor, Ajustes,
+ * ReminderCreator, PromptEditor y la hoja de día (esas rutas viven fuera de
+ * este grupo).
  */
 
 import { Tabs } from 'expo-router';
@@ -34,7 +35,11 @@ export default function TabsLayout() {
           borderTopColor: color.neutral[900],
           elevation: 0,
         },
-        tabBarLabelStyle: typography.tabLabel,
+        // Con seis pestañas «Calendario» ya no cabe al tamaño del token, y una
+        // etiqueta cortada a la mitad se lee peor que una medio punto más
+        // pequeña. El resto del sistema tipográfico no se toca.
+        tabBarLabelStyle: { ...typography.tabLabel, fontSize: 9.5, letterSpacing: 0.2 },
+        tabBarItemStyle: { paddingHorizontal: 0 },
       }}
     >
       <Tabs.Screen
@@ -48,6 +53,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="calendar"
         options={{ title: 'Calendario', tabBarIcon: tabIcon('calendar-blank') }}
+      />
+      <Tabs.Screen
+        name="prompts"
+        options={{ title: 'Ramos', tabBarIcon: tabIcon('graduation-cap') }}
       />
       <Tabs.Screen
         name="search"

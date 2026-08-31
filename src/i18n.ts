@@ -85,6 +85,14 @@ export const toast = {
   tagsKeepText: 'Las notas conservan su texto',
   tagLimit: 'Ocho es el límite, a propósito',
   upToDate: 'Todo al día',
+  promptCopied: 'Prompt copiado, ya puedes pegarlo',
+  promptCopyFailed: 'No se pudo copiar',
+  promptDiscarded: 'Estaba vacío, así que no se guardó',
+  promptDeleted: 'Prompt eliminado',
+  courseDeleted: (prompts: number) =>
+    prompts === 0
+      ? 'Ramo eliminado'
+      : `Ramo eliminado, y con él ${promptCount(prompts)}`,
   notificationsDenied: 'Sin permiso de notificaciones. Actívalo en Ajustes del sistema.',
 };
 
@@ -116,4 +124,36 @@ export function noteCount(n: number): string {
 
 export function subtaskCount(done: number, total: number): string {
   return `${done}/${total} ${total === 1 ? 'subtarea' : 'subtareas'}`;
+}
+
+export function promptCount(n: number): string {
+  return n === 1 ? '1 prompt' : `${n} prompts`;
+}
+
+/** "1 240 caracteres" — con separador de miles, que a partir de mil se agradece. */
+export function charCount(n: number): string {
+  const pretty = n.toLocaleString('es-CL');
+  return n === 1 ? '1 carácter' : `${pretty} caracteres`;
+}
+
+/**
+ * El nombre con el que un prompt aparece en la lista.
+ *
+ * Si no le pusiste nombre, se usa su primera línea con contenido. Da un
+ * resultado razonable sin obligar a rellenar un campo más al pegar.
+ */
+export function promptTitle(label: string, body: string): string {
+  const named = label.trim();
+  if (named) return named;
+
+  // Se parte con expresión regular y no con un salto de línea a secas: un
+  // prompt copiado desde Windows llega con retorno de carro, y la primera
+  // línea acabaría arrastrando un carácter invisible al final.
+  const firstLine = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  if (!firstLine) return 'Prompt sin título';
+  return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
 }

@@ -108,6 +108,83 @@ test('las seis tablas del modelo existen tras migrar', () => {
   }
 });
 
+test('la migración 4 añade courses y prompts sin tocar lo anterior', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    for (const statement of extractSql()) db.exec(statement);
+
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all()
+      .map((row) => (row as { name: string }).name);
+
+    for (const expected of ['courses', 'prompts']) {
+      assert.ok(tables.includes(expected), `falta la tabla ${expected}`);
+    }
+    // Las tablas de antes siguen ahí: la rama 3 es aditiva.
+    for (const expected of ['tags', 'entries', 'notification_rules']) {
+      assert.ok(tables.includes(expected), `la migración 4 se llevó ${expected}`);
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test('borrar un ramo se lleva sus prompts', () => {
+  // ON DELETE CASCADE y no SET NULL: un prompt sin ramo no tendría dónde
+  // aparecer, y quedaría ocupando sitio en la base sin que nadie lo vea.
+  const db = new DatabaseSync(':memory:');
+  try {
+    for (const statement of extractSql()) db.exec(statement);
+    db.exec('PRAGMA foreign_keys = ON');
+
+    db.prepare(
+      'INSERT INTO courses (id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run('c1', 'Cálculo III', '#b5abfc', 0, '2026-08-31T10:00:00.000Z');
+
+    const insert = db.prepare(
+      `INSERT INTO prompts (id, course_id, label, body, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    );
+    insert.run('p1', 'c1', 'Resumen', 'texto largo', 0, 'x', 'x');
+    insert.run('p2', 'c1', '', 'otro', 1, 'x', 'x');
+
+    db.prepare('DELETE FROM courses WHERE id = ?').run('c1');
+
+    const left = db.prepare('SELECT COUNT(*) AS n FROM prompts').get() as { n: number };
+    assert.equal(left.n, 0, 'los prompts sobrevivieron a su ramo');
+  } finally {
+    db.close();
+  }
+});
+
+test('un prompt no tiene tope de longitud', () => {
+  // El motivo de la pantalla es pegar prompts largos. Si la columna
+  // truncara, el fallo sería silencioso y solo se notaría al pegarlo en el
+  // chat y ver que le falta el final.
+  const db = new DatabaseSync(':memory:');
+  try {
+    for (const statement of extractSql()) db.exec(statement);
+
+    db.prepare(
+      'INSERT INTO courses (id, name, color, position, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run('c1', 'Álgebra', '#b5abfc', 0, 'x');
+
+    const huge = 'Eres un profesor exigente. '.repeat(2000);
+    db.prepare(
+      `INSERT INTO prompts (id, course_id, label, body, position, created_at, updated_at)
+       VALUES (?, ?, '', ?, 0, 'x', 'x')`
+    ).run('p1', 'c1', huge);
+
+    const row = db.prepare('SELECT body FROM prompts WHERE id = ?').get('p1') as {
+      body: string;
+    };
+    assert.equal(row.body.length, huge.length, 'el cuerpo se guardó recortado');
+  } finally {
+    db.close();
+  }
+});
+
 /** La SQL con la que se siembran las seis etiquetas, extraída de `runAsync`. */
 function seedTagsSql(): string {
   const match = source.match(/runAsync\(\s*'(INSERT[^']*INTO tags[^']*)'/);

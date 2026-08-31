@@ -99,3 +99,34 @@ export type RelativeOffset = (typeof RELATIVE_OFFSETS)[number];
 
 /** La fila de hora cicla entre estos cinco valores. No es un time picker libre. */
 export const HOUR_CYCLE = [8, 9, 13, 18, 21] as const;
+
+/**
+ * Un ramo de la universidad. Solo es la carpeta que agrupa prompts: no tiene
+ * horario, ni notas, ni relación con las entradas — a propósito.
+ */
+export interface Course {
+  id: string;
+  name: string;
+  /** De `TAG_PALETTE`, para distinguirlos de un vistazo en la lista. */
+  color: string;
+  position: number;
+  created_at: string;
+}
+
+/**
+ * Un prompt guardado dentro de un ramo.
+ *
+ * `body` no tiene tope de longitud: la gracia es pegar el prompt entero, y
+ * los que valen la pena son largos. La lista nunca lo muestra completo — dos
+ * líneas y a otra cosa —; el texto íntegro solo vive en su propia pantalla.
+ */
+export interface Prompt {
+  id: string;
+  course_id: string;
+  /** Nombre corto, opcional. Vacío = se usa la primera línea del cuerpo. */
+  label: string;
+  body: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}

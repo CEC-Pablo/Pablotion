@@ -9,7 +9,7 @@ import * as SQLite from 'expo-sqlite';
 import { TAG_PALETTE } from '../../theme/tokens';
 
 const DATABASE_NAME = 'trazo.db';
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 /** Las seis etiquetas sembradas al instalar. Seis en total, no seis por nota. */
 const SEED_TAGS: { name: string; color: string }[] = [
@@ -159,6 +159,41 @@ async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
     version = 3;
     await db.execAsync('PRAGMA user_version = 3');
   }
+
+  if (version === 3) {
+    // Los prompts de estudio. Dos tablas y ninguna relación con `entries`:
+    // un prompt no es una nota con otro nombre, no caduca, no avisa y no
+    // aparece en Inicio. Mezclarlo con el modelo de captura habría obligado a
+    // llenar `entries` de columnas que solo sirven para un caso.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS courses (
+        id          TEXT PRIMARY KEY NOT NULL,
+        name        TEXT NOT NULL,
+        color       TEXT NOT NULL,
+        position    INTEGER NOT NULL,
+        created_at  TEXT NOT NULL
+      );
+
+      -- ON DELETE CASCADE, no SET NULL: un prompt sin ramo no es nada. Al
+      -- borrar el ramo se van sus prompts, y por eso la pantalla lo avisa
+      -- antes con el número exacto.
+      CREATE TABLE IF NOT EXISTS prompts (
+        id          TEXT PRIMARY KEY NOT NULL,
+        course_id   TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        label       TEXT NOT NULL DEFAULT '',
+        body        TEXT NOT NULL DEFAULT '',
+        position    INTEGER NOT NULL,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_prompts_course ON prompts (course_id, position);
+    `);
+
+    version = 4;
+    await db.execAsync('PRAGMA user_version = 4');
+  }
+
 }
 
 let handle: Promise<SQLite.SQLiteDatabase> | null = null;
