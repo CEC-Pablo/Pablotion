@@ -22,6 +22,14 @@ formulario mañana» crea un recordatorio sin que haya que decírselo.
 - **Prioridad y orden.** Lo urgente sube; dentro de cada grupo puedes arrastrar a mano.
 - **Etiquetas plegables.** Lo etiquetado se recoge para que entrar a la app no abrume.
 - **Calendario** con el mes de un vistazo, integrado con el calendario del teléfono.
+  Añadir algo en un día abre una hoja por encima: el mes se queda donde estaba.
+- **Repetir sin repetirse.** «Pastilla todos los lunes durante tres meses» se anota
+  una vez y aparece en los trece lunes. Cada copia se completa por separado — la
+  gracia es ir tachándolas — y una sola acción borra el grupo entero.
+- **Ramos con sus prompts.** Un sitio para los prompts largos con los que se estudia
+  cada asignatura, agrupados por ramo y a un toque de copiarse. Sin límite de
+  longitud, y en la lista nunca se ven enteros — dos líneas y el resto en su
+  pantalla.
 
 ## Cómo está hecho
 
@@ -35,6 +43,7 @@ formulario mañana» crea un recordatorio sin que haya que decírselo.
 | Persistencia | `expo-sqlite` — fuente de verdad, sin backend |
 | Notificaciones | `expo-notifications`, **locales**, sin FCM ni APNs |
 | Calendario | `expo-calendar` |
+| Portapapeles | `expo-clipboard` — copiar un prompt es la mitad de para qué sirve guardarlo |
 | Fechas | `date-fns` con locale `es`, siempre en hora local del dispositivo |
 
 **Sin cuenta y sin servidor.** Los datos viven en el teléfono. Es una decisión, no una
@@ -88,10 +97,13 @@ app/                       rutas de expo-router
     index.tsx              Inicio — captura rápida y lista
     tasks.tsx              Tareas con subtareas
     calendar.tsx           Calendario mensual
+    prompts.tsx            Ramos y sus prompts de estudio
     search.tsx             Búsqueda instantánea
     tags.tsx               Gestión de etiquetas
   note/[id].tsx            Editor de nota
+  prompt/[id].tsx          Editor de prompt (el único sitio donde se ve entero)
   reminder/[id].tsx        Creador de recordatorio
+  day/[date].tsx           Hoja para añadir algo en un día del calendario
   onboarding.tsx           Tres pasos de bienvenida
   settings.tsx             Ajustes
 src/
@@ -99,12 +111,13 @@ src/
   features/
     capture/               captura, detección de tipo, orden y agrupación
     reminders/             calendario, frecuencia, motor de recurrencia, vista previa
-    calendar/              rejilla mensual, selector de mes/año, alta en un día
+    calendar/              rejilla mensual, alta en un día, series repetidas
   lib/
     db/                    esquema, migraciones y queries de SQLite
     notifications/         programación, cancelación y reposición de la ventana
     calendar/              integración con el calendario del teléfono
     dates.ts               formato y aritmética, todo en hora local
+    useKeyboardLift.ts     cuánto levantar una hoja para que el teclado no la tape
   store/                   zustand
   theme/tokens.ts          la única fuente de color, tamaño, radio y sombra
   types/                   modelo canónico
@@ -151,7 +164,7 @@ la instalación limpia y el reintento.
 
 ## Qué está verificado y qué no
 
-`npm test` cubre 63 casos de lógica pura, sin dispositivo:
+`npm test` cubre 87 casos de lógica pura, sin dispositivo:
 
 - Las cuatro reglas de detección de tipo, en orden, incluida la precedencia entre ellas.
 - La serie de ocurrencias de las cuatro frecuencias, con fechas de vencimiento pasadas.
@@ -163,9 +176,19 @@ la instalación limpia y el reintento.
 - El orden por prioridad, la agrupación por etiqueta y el cálculo del arrastre.
 - La cadena de migraciones sobre SQLite real, en limpio y reintentada.
 - El parseo de la hora manual («9», «09:05», «21.30») y sus casos inválidos.
+- Las fechas de una serie repetida: que los martes caen en martes, que «cada mes»
+  desde un 31 no se va arrastrando al 28, y que la hora del reloj sobrevive al
+  cambio de horario de verano.
+- Que una serie de 120 copias no revienta el tope de notificaciones pendientes: se
+  programan las 56 más cercanas y el resto espera al siguiente arranque.
+- Que borrar una serie se lleva sus copias y **solo** esas.
+- Que borrar un ramo se lleva sus prompts, y que un prompt largo se guarda entero.
+- El título con que un prompt sin nombre aparece en la lista, con texto pegado desde
+  Windows incluido.
 
 También se verifica sin dispositivo que `tsc --noEmit` está limpio, que `expo-doctor`
-pasa sus 21 comprobaciones y que `expo export --platform android` empaqueta el bundle.
+pasa sus comprobaciones de coherencia y que `expo export --platform android` empaqueta
+el bundle.
 
 **Comprobado en dispositivo físico (Android):**
 
@@ -178,6 +201,9 @@ pasa sus 21 comprobaciones y que `expo export --platform android` empaqueta el b
 **Lo que sigue sin comprobar de forma sistemática:**
 
 - El comportamiento del pull-to-refresh, del arrastre y de las animaciones bajo uso real.
+- La hoja del calendario frente al teclado. Android se comporta de dos maneras según
+  la versión — encogiendo la ventana o superponiendo el teclado — y `useKeyboardLift`
+  las distingue midiendo, pero eso solo se confirma en un teléfono de verdad.
 - La fidelidad de píxel contra el prototipo de diseño.
 - El permiso de alarmas exactas en Android 12+ en fabricantes que matan procesos en
   segundo plano de forma agresiva.
@@ -195,6 +221,14 @@ pasa sus 21 comprobaciones y que `expo export --platform android` empaqueta el b
   botón «Hecho». Sin eso, «cada 3 horas» no pararía nunca.
 - **La hora tiene entrada manual** además de los cinco atajos del diseño. Los atajos
   siguen siendo el camino rápido; ser el único camino era demasiado limitado.
+- **Una serie repetida son entradas de verdad, no una entrada con una regla.** La
+  alternativa —una sola fila que las pantallas expanden al vuelo— parece más limpia
+  hasta que hay que anotar que el lunes 8 sí te tomaste la pastilla y el 15 no:
+  haría falta una tabla de excepciones para lo único que la función existe. Copias
+  reales lo dan gratis y ninguna pantalla existente necesita cambiar.
+- **Los prompts no son notas con otro nombre.** Viven en sus propias tablas: no caducan,
+  no avisan, no salen en Inicio y no tienen etiqueta. Meterlos en `entries` habría
+  añadido columnas que solo sirven para un caso.
 - La detección de tipo **tolera la falta de acentos**. El diseño ya listaba «avisame»
   junto a «avísame»; normalizar extiende esa cortesía al resto de la lista, y es el mismo
   criterio que ya usaba la búsqueda.
